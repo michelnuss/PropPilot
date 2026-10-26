@@ -1,26 +1,30 @@
 import sqlite3
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from twilio.request_validator import RequestValidator
 
-from turnpilot.agents import _model_json
+from turnpilot.agents import _model_json, dispatch, follow_up, triage
 from turnpilot.config import Settings
 from turnpilot.server import create_app
+from turnpilot.workflow import inspect
 
 
 SENDER = "whatsapp:+15551234567"
 
 
-def setup(tmp_path, mode="mock"):
+def setup(tmp_path, mode="mock", provider="openai"):
     settings = Settings(
         mode=mode,
+        provider=provider,
         database_path=tmp_path / "test.db",
         media_dir=tmp_path / "photos",
         twilio_sid="ACtest" if mode == "live" else "",
         twilio_token="token" if mode == "live" else "",
         webhook_url="https://example.com/whatsapp" if mode == "live" else "",
         openai_key="test" if mode == "live" else "",
+        gemini_key="test" if mode == "live" and provider == "gemini" else "",
     )
     return TestClient(create_app(settings)), settings
 
@@ -137,11 +141,48 @@ def test_vision_request_contains_real_image_bytes(monkeypatch, tmp_path):
     monkeypatch.setattr("turnpilot.agents.httpx.Client", FakeClient)
     client, settings = setup(tmp_path, "live")
     image = Path("demo/broken_sink.png")
-    assert _model_json(settings, "Inspect", "What is wrong?", (image, "image/png")) == {"ok": True}
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": False}
+    assert _model_json(settings, "Inspect", "What is wrong?", (image, "image/png"), schema=schema, name="test_output") == {"ok": True}
     parts = captured["input"][0]["content"]
     assert parts[1]["type"] == "input_image"
     assert parts[1]["image_url"].startswith("data:image/png;base64,")
     assert len(parts[1]["image_url"]) > 1000
+    assert captured["text"]["format"] == {"type": "json_schema", "name": "test_output", "schema": schema, "strict": True}
+
+
+def test_gemini_vision_request_uses_inline_photo_and_json_schema(monkeypatch, tmp_path):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": '{"ok":true}'}]}}]}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, url, **kwargs):
+            captured.update({"url": url, **kwargs})
+            return FakeResponse()
+
+    monkeypatch.setattr("turnpilot.agents.httpx.Client", FakeClient)
+    _, settings = setup(tmp_path, "live", "gemini")
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": False}
+    result = _model_json(settings, "Inspect", "What is wrong?", (Path("demo/broken_sink.png"), "image/png"), schema=schema, name="test_output")
+    assert result == {"ok": True}
+    assert captured["url"].endswith("/gemini-3.8-flash:generateContent")
+    assert captured["json"]["generationConfig"]["responseFormat"]["text"]["schema"] == schema
+    assert len(captured["json"]["contents"][0]["parts"][1]["inline_data"]["data"]) > 1000
+    assert captured["headers"]["x-goog-api-key"] == "test"
 
 
 def test_mock_sparking_outlet_is_urgent(tmp_path):
@@ -160,3 +201,58 @@ def test_captioned_mock_photo_and_later_property_context(tmp_path):
     post(client, "SM8", "Property: Unit 3\nWhat happens next?")
     assert rows(settings.database_path, "cases")[0]["property_context"] == "Unit 3"
     assert "simulated Plumber Agent" in rows(settings.database_path, "messages")[-1]["body"]
+
+
+def test_workflow_has_no_whatsapp_or_database_dependency(tmp_path):
+    _, settings = setup(tmp_path)
+    actions = []
+    result = inspect(
+        settings, "Property: Unit 2", (Path("demo/broken_sink.png"), "image/png"),
+        property_context="Unit 2", on_action=lambda agent, action, detail: actions.append((agent, action)),
+    )
+    assert result.triage["trade"] == "plumber"
+    assert result.dispatch["route"] == "plumber_agent"
+    assert result.specialist["simulated"] is True
+    assert actions == [("inspection_triage", "classified"), ("dispatcher", "routed"), ("plumber_agent", "draft_plan")]
+    assert "No vendor has been contacted" in result.reply
+
+
+def test_workflow_preserves_completed_steps_on_specialist_failure(monkeypatch, tmp_path):
+    _, settings = setup(tmp_path)
+    actions = []
+    monkeypatch.setattr("turnpilot.workflow.specialist", lambda *args: (_ for _ in ()).throw(ValueError("model failed")))
+    with pytest.raises(ValueError, match="model failed"):
+        inspect(settings, "sink leak", None, on_action=lambda agent, action, detail: actions.append(agent))
+    assert actions == ["inspection_triage", "dispatcher"]
+
+
+def test_live_triage_elevates_reported_electrical_hazard(monkeypatch, tmp_path):
+    _, settings = setup(tmp_path, "live")
+    monkeypatch.setattr("turnpilot.agents._model_json", lambda *args, **kwargs: {
+        "trade": "electrician", "issue": "Sparking outlet", "severity": "low",
+        "visible_evidence": "Sparks at an outlet", "uncertainty": "Needs on-site confirmation",
+    })
+    result = triage(settings, "The outlet is sparking", None, None)
+    assert result["severity"] == "high"
+
+
+def test_live_followup_does_not_claim_a_real_booking(monkeypatch, tmp_path):
+    _, settings = setup(tmp_path, "live")
+    monkeypatch.setattr("turnpilot.agents._model_json", lambda *args, **kwargs: {"answer": "We booked a plumber for tomorrow."})
+    case = {"trade": "plumber", "plan_json": "{}"}
+    answer = follow_up(settings, "What happens next?", case, [])
+    assert "No vendor has been contacted or booked" in answer
+    assert "We booked" not in answer
+
+
+def test_mock_electrician_followup_uses_electrical_advice(tmp_path):
+    client, settings = setup(tmp_path)
+    post(client, "SM9", "The outlet sparks")
+    post(client, "SM10", "How urgent is it?")
+    reply = rows(settings.database_path, "messages")[-1]["body"]
+    assert "qualified electrician" in reply
+    assert "shut off the water" not in reply
+
+
+def test_general_maintenance_route_has_stable_agent_name():
+    assert dispatch({"trade": "general maintenance"})["route"] == "general_maintenance_agent"

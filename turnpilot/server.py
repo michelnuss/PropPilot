@@ -7,10 +7,11 @@ from twilio.request_validator import RequestValidator
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 
-from .agents import dispatch, follow_up, specialist, triage
+from .agents import follow_up
 from .config import Settings
 from .db import Store
 from .media import download_image
+from .workflow import inspect
 
 
 log = logging.getLogger(__name__)
@@ -67,23 +68,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if image:
                 store.photo(message_id, str(image[0]), image[1], media_url)
             prior_context = dict(prior) if prior and case_id == prior["id"] else None
-            triage_result = triage(settings, body, image, prior_context)
-            store.action(case_id, message_id, "inspection_triage", "classified", triage_result)
-            route = dispatch(triage_result)
-            store.action(case_id, message_id, "dispatcher", "routed", route)
-            plan = specialist(settings, triage_result, property_context or (prior or {}).get("property_context", ""))
-            store.action(case_id, message_id, f"{route['route']}", "draft_plan", plan)
-            store.update_case(case_id, triage_result, plan)
-            intro = "[MOCK MODE] " if settings.mode == "mock" else ""
-            caution = " If there is exposed wiring, fire risk, or water near electricity, keep clear and seek urgent qualified help." if triage_result["severity"] == "high" else ""
-            reply = (
-                f"{intro}I can see/report: {triage_result['issue']}. {triage_result['uncertainty']}\n"
-                f"Connected to simulated {triage_result['trade'].title()} Agent. Draft repair request prepared.\n"
-                f"Possible diagnosis: {plan['diagnosis']}\nPlan: {plan['repair_plan']}\n"
-                f"Rough demo-only estimate: {plan['estimate']}. Simulated slot: {plan['slot']}.\n"
-                f"No vendor has been contacted or booked.{caution} Ask me a follow-up question."
+            result = inspect(
+                settings, body, image, prior_context,
+                property_context or (prior or {}).get("property_context", ""),
+                on_action=lambda agent, action, detail: store.action(case_id, message_id, agent, action, detail),
             )
-            send(sender, case_id, reply[:1550])
+            store.update_case(case_id, result.triage, result.specialist)
+            send(sender, case_id, result.reply)
         except Exception as exc:
             log.exception("Message processing failed")
             store.action(case_id, message_id, "system", "error", {"error": str(exc)[:300]})

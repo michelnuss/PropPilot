@@ -13,20 +13,24 @@ The provisional Twilio adapter in `turnpilot/server.py` exists to make Founder 2
 
 ## Integration contract for Gabi's coding agent
 
-The core agent functions are in `turnpilot/agents.py`:
+The preferred integration entry point is `turnpilot/workflow.py`:
+
+- `inspect(settings, message, image, prior_case=None, property_context="", on_action=None) -> InspectionResult` runs triage → dispatcher → specialist without importing WhatsApp or SQLite. `InspectionResult` contains `triage`, `dispatch`, `specialist`, and a ready-to-send `reply`. Pass `on_action(agent, action, detail)` to persist each step as it completes; this preserves triage and dispatch logs even if the specialist fails.
+
+The lower-level agent functions remain available in `turnpilot/agents.py`:
 
 - `triage(settings, message, image, prior) -> dict`: `image` is `(Path, MIME type)` after the server has downloaded the photo. It returns `trade`, `issue`, `severity`, `visible_evidence`, and `uncertainty`. In live mode it sends actual image bytes to a vision-capable model; in mock mode it follows the staged sink fixture and labels the result as mock.
 - `dispatch(triage_result) -> dict`: chooses the specialist route and marks it simulated.
 - `specialist(settings, triage_result, property_context) -> dict`: produces `diagnosis`, `repair_plan`, `estimate`, `slot`, and `simulated=True`. It does not contact anyone.
 - `follow_up(settings, question, case, history) -> str`: answers using the stored case and recent messages. The case has `plan_json`, `issue`, `trade`, `severity`, and `property_context`.
 
-`turnpilot/server.py` currently calls those functions in order, logs each handoff in SQLite using `turnpilot/db.py`, and sends the final response through Twilio. The HTTP endpoint is `POST /whatsapp`. In live mode, `TWILIO_WEBHOOK_URL` must exactly match the public webhook URL to validate Twilio's signature. The server responds promptly with TwiML, then processes the message and sends the detailed reply through Twilio's REST API.
+`turnpilot/server.py` currently calls `inspect(...)`, uses the callback to log each handoff in SQLite via `turnpilot/db.py`, and sends the final response through Twilio. The HTTP endpoint is `POST /whatsapp`. In live mode, `TWILIO_WEBHOOK_URL` must exactly match the public webhook URL to validate Twilio's signature. The server responds promptly with TwiML, then processes the message and sends the detailed reply through Twilio's REST API. The default live AI provider is Gemini (`GEMINI_MODEL=gemini-3.8-flash`); OpenAI remains selectable with `AI_PROVIDER=openai`. Both use structured JSON schemas for triage, specialist, and follow-up outputs; incomplete model results are rejected rather than presented as a diagnosis.
 
 SQLite tables: `cases`, `messages`, `photos`, `tasks`, and `agent_actions`. `MessageSid` is unique for duplicate delivery protection. The `agent_actions` rows are the evidence that triage, dispatcher, and specialist steps actually ran. Keep these records or provide equivalent records if the adapter changes.
 
 ## How to test before merging
 
-From the PR branch, follow `README.md` and run `python -m pytest -q` and `python -m turnpilot.demo --db data/demo.db`. The fixture is `demo/broken_sink.png`. The mock mode does **not** analyze pixels and does **not** send WhatsApp messages; it tests routing and conversation logic. As of the latest Founder 2 push, eight tests pass, and a localhost HTTP photo plus cost follow-up worked. Live Twilio and OpenAI credentials were not available for an actual phone test.
+From the PR branch, follow `README.md` and run `python -m pytest -q` and `python -m turnpilot.demo --db data/demo.db`. The fixture is `demo/broken_sink.png`; `demo/turnpilot-avatar.png` is optional agent artwork. The mock mode does **not** analyze pixels and does **not** send WhatsApp messages; it tests routing and conversation logic. As of the latest Founder 2 push, fifteen tests pass, and a localhost HTTP photo plus cost follow-up worked. A Gemini credential tested on 2026-10-26 was rejected with HTTP 401, and no live model or Twilio phone test has passed. With a valid key set locally, run `python -m turnpilot.verify_model` before the joint WhatsApp test.
 
 Live acceptance sequence after integration: join the Twilio Sandbox; send the staged sink photo from a joined WhatsApp account; receive the acknowledgement and plumber-agent draft; ask about urgency, cost, and next steps in the same chat; confirm SQLite has one case, a photo, a task, message history, and three agent action rows. Confirm all vendor outreach, estimates, and slots are labeled simulated.
 
