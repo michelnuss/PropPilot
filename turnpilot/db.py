@@ -78,6 +78,13 @@ class Store:
         with self.connect() as db:
             db.execute("UPDATE messages SET case_id=? WHERE id=?", (case_id, message_id))
 
+    def set_property_context(self, case_id: int, context: str):
+        with self.connect() as db:
+            db.execute(
+                "UPDATE cases SET property_context=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (context, case_id),
+            )
+
     def photo(self, message_id: int, path: str, mime: str, url: str):
         with self.connect() as db:
             db.execute(

@@ -42,7 +42,7 @@ def _model_json(settings: Settings, instructions: str, text: str, image: tuple[P
 def triage(settings: Settings, message: str, image: tuple[Path, str] | None, prior: dict | None) -> dict:
     if settings.mode == "mock":
         lower = message.lower()
-        if image and not lower:
+        if image:
             trade, issue = "plumber", "Mock fixture: visibly broken kitchen sink pipe with water leakage"
         elif any(word in lower for word in ("sink", "pipe", "leak", "water", "drain", "plumb")):
             trade, issue = "plumber", "Reported sink or pipe leak"

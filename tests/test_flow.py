@@ -151,3 +151,12 @@ def test_mock_sparking_outlet_is_urgent(tmp_path):
     assert case["trade"] == "electrician"
     assert case["severity"] == "high"
     assert "keep clear" in rows(settings.database_path, "messages")[-1]["body"]
+
+
+def test_captioned_mock_photo_and_later_property_context(tmp_path):
+    client, settings = setup(tmp_path)
+    post(client, "SM7", "Property: Unit 2", image=True)
+    assert rows(settings.database_path, "cases")[0]["trade"] == "plumber"
+    post(client, "SM8", "Property: Unit 3\nWhat happens next?")
+    assert rows(settings.database_path, "cases")[0]["property_context"] == "Unit 3"
+    assert "simulated Plumber Agent" in rows(settings.database_path, "messages")[-1]["body"]

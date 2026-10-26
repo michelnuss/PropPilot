@@ -50,6 +50,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not image and prior and not new_issue:
                 case_id = prior["id"]
                 store.attach(message_id, case_id)
+                if property_context:
+                    store.set_property_context(case_id, property_context)
+                    prior["property_context"] = property_context
                 store.action(case_id, message_id, "conversation", "follow_up", {"question": body})
                 reply = follow_up(settings, body, prior, store.history(case_id))
                 send(sender, case_id, reply)
@@ -59,6 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return
             case_id = prior["id"] if prior and image and not new_issue else store.create_case(sender, property_context)
             store.attach(message_id, case_id)
+            if prior and case_id == prior["id"] and property_context:
+                store.set_property_context(case_id, property_context)
             if image:
                 store.photo(message_id, str(image[0]), image[1], media_url)
             prior_context = dict(prior) if prior and case_id == prior["id"] else None
@@ -70,7 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             store.action(case_id, message_id, f"{route['route']}", "draft_plan", plan)
             store.update_case(case_id, triage_result, plan)
             intro = "[MOCK MODE] " if settings.mode == "mock" else ""
-            caution = " If water is near electricity, keep clear and seek urgent qualified help." if triage_result["severity"] == "high" else ""
+            caution = " If there is exposed wiring, fire risk, or water near electricity, keep clear and seek urgent qualified help." if triage_result["severity"] == "high" else ""
             reply = (
                 f"{intro}I can see/report: {triage_result['issue']}. {triage_result['uncertainty']}\n"
                 f"Connected to simulated {triage_result['trade'].title()} Agent. Draft repair request prepared.\n"
