@@ -1,5 +1,7 @@
 # TurnPilot AI (PropPilot)
 
+**Two-founder integration:** see [docs/FOUNDER_HANDOFF.md](docs/FOUNDER_HANDOFF.md) for ownership, agent function contracts, and merge steps.
+
 A WhatsApp-only hackathon demo for property inspection follow-up. A photo or text report goes through **inspection/triage → dispatcher → simulated trade specialist**. Replies and follow-up questions stay in WhatsApp. No real contractor is contacted, no booking is made, and estimates and slots are simulated.
 
 ## What is real and what is simulated
