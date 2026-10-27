@@ -59,16 +59,16 @@ def test_photo_routes_persists_and_followup(tmp_path):
     assert [a["agent"] for a in actions] == ["inspection_triage"]
     assert not rows(settings.database_path, "tasks")
     reply = rows(settings.database_path, "messages")[-1]["body"]
-    assert "Want me to ask our demo plumber" in reply
+    assert "Want me to see if a plumber" in reply
     assert "[MOCK MODE]" in rows(settings.database_path, "messages")[-2]["body"]
     post(client, "SM2", "yes")
     actions = rows(settings.database_path, "agent_actions")
     assert [a["agent"] for a in actions] == ["inspection_triage", "bob", "dispatcher", "plumber_agent"]
     assert len(rows(settings.database_path, "tasks")) == 1
     replies = [m["body"] for m in rows(settings.database_path, "messages")[-3:]]
-    assert "talking to our demo plumber" in replies[0]
+    assert "check with the plumber" in replies[0]
     assert "17:00" in replies[1] and "about 2 hours" in replies[1]
-    assert "owner would cover" in replies[2]
+    assert "on the owner, not the guest" in replies[2]
     assert "Of course" not in replies[2]  # phone sender has no demo name
     post(client, "SM3", "What might it cost?")
     followup = rows(settings.database_path, "messages")[-1]["body"]
@@ -123,7 +123,7 @@ def test_pending_photo_waits_for_casual_consent_and_does_not_invent_availability
     client, settings = setup(tmp_path)
     post(client, "SM1", image=True)
     post(client, "SM2", "How much would it cost?")
-    assert "Want me to?" in rows(settings.database_path, "messages")[-1]["body"]
+    assert "Want me to check with a plumber" in rows(settings.database_path, "messages")[-1]["body"]
     assert not rows(settings.database_path, "tasks")
     post(client, "SM3", "yea")
     assert len(rows(settings.database_path, "tasks")) == 1
@@ -157,14 +157,14 @@ def test_browser_chat_uses_saved_photo_case_and_followup(tmp_path):
     photo = Path("demo/scenarios/leaking-sink.png").read_bytes()
     response = client.post("/chat/message", data={"body": "Property: Unit 2"}, files={"photo": ("sink.png", photo, "image/png")})
     assert response.status_code == 200
-    assert "Want me to ask our demo plumber" in response.json()["reply"]
+    assert "Want me to see if a plumber" in response.json()["reply"]
     messages = client.get("/chat/state").json()["messages"]
     assert len(messages) == 3
     assert messages[0]["photo_url"].startswith("/chat/photo/")
     assert client.get(messages[0]["photo_url"]).content == photo
-    assert "Want me to ask" in response.json()["reply"]
+    assert "Want me to see" in response.json()["reply"]
     response = client.post("/chat/message", data={"body": "yes"})
-    assert "Would 17:00 work?" in response.json()["reply"]
+    assert "Does 17:00 work for you?" in response.json()["reply"]
     response = client.post("/chat/message", data={"body": "yes"})
     assert "need anything else?" in response.json()["reply"]
     response = client.post("/chat/message", data={"body": "How urgent is it?"})
@@ -220,7 +220,7 @@ def test_browser_chat_rejects_fake_images_and_demo_requires_password(tmp_path, m
     photo = Path("demo/scenarios/damaged-outlet.png").read_bytes()
     response = demo.post("/chat/message", auth=("demo", "demo-password"), files={"photo": ("outlet.png", photo, "image/png")})
     assert response.status_code == 200
-    assert "Want me to ask our demo electrician" in response.json()["reply"]
+    assert "Want me to see if an electrician" in response.json()["reply"]
     response = demo.post("/chat/message", auth=("demo", "demo-password"), data={"body": "yes"})
     assert response.status_code == 200
     response = demo.post("/chat/message", auth=("demo", "demo-password"), data={"body": "How urgent is it?"})
@@ -257,20 +257,20 @@ def test_gemini_conversation_waits_for_photo_then_stages_handoff(tmp_path, monke
     assert response.status_code == 200
     messages = rows(settings.database_path, "messages")
     assert len(messages[-2]["body"]) < 140
-    assert f"Want me to ask our demo {trade}" in messages[-1]["body"]
+    assert f"Want me to see if a {trade}" in messages[-1]["body"]
     assert not rows(settings.database_path, "tasks")
     response = client.post("/chat/message", auth=auth, data={"body": "yea"})
     assert response.status_code == 200
     messages = rows(settings.database_path, "messages")
-    assert "talking to our demo" in messages[-3]["body"]
-    assert "Just heard back" in messages[-2]["body"]
+    assert "check with the" in messages[-3]["body"]
+    assert ("She says" if trade == "cleaner" else "He says") in messages[-2]["body"]
     assert ("17:00" if trade == "plumber" else "10:00") in messages[-2]["body"]
     assert "about 2 hours" in messages[-2]["body"]
-    assert "Would " in messages[-1]["body"]
+    assert "work" in messages[-1]["body"]
     if trade == "cleaner":
-        assert "$100/hour" in messages[-2]["body"]
+        assert "$100 an hour" in messages[-2]["body"]
     else:
-        assert "owner would cover" in messages[-1]["body"]
+        assert "on the owner, not the guest" in messages[-1]["body"]
     response = client.post("/chat/message", auth=auth, data={"body": "yes"})
     assert "Of course, Michel" in response.json()["reply"]
     case = rows(settings.database_path, "cases")[0]
@@ -462,7 +462,7 @@ def test_captioned_mock_photo_and_later_property_context(tmp_path):
     assert rows(settings.database_path, "cases")[0]["trade"] == "plumber"
     post(client, "SM8", "Property: Unit 3\nWhat happens next?")
     assert rows(settings.database_path, "cases")[0]["property_context"] == "Unit 3"
-    assert "demo plumber" in rows(settings.database_path, "messages")[-1]["body"]
+    assert "a plumber" in rows(settings.database_path, "messages")[-1]["body"]
 
 
 def test_workflow_has_no_whatsapp_or_database_dependency(tmp_path):

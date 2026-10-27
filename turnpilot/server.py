@@ -89,7 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     trade = triage_result["trade"].title()
                     store.action(case_id, message_id, "bob", "handoff_approved", {"trade": trade, "simulated": True})
                     helper = "cleaner" if triage_result["trade"] == "cleaner" else ("plumber" if triage_result["trade"] == "plumber" else trade.lower())
-                    send(sender, case_id, f"One sec — I'm talking to our demo {helper} now.")
+                    send(sender, case_id, f"Okay, give me a sec. I'll check with the {helper}.")
                     route, plan = prepare_handoff(
                         settings, triage_result, prior["property_context"],
                         on_action=lambda agent, action, detail: store.action(case_id, message_id, agent, action, detail),
@@ -98,17 +98,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     slot = plan["slot"].split(" (", 1)[0].lower()
                     duration = plan.get("duration", "about 2 hours").split(" (", 1)[0].lower()
                     if triage_result["trade"] == "cleaner":
-                        send(sender, case_id, f"Just heard back from her. {slot.capitalize()} could work, and it'd take {duration} at $100/hour.")
+                        send(sender, case_id, f"She says {slot} works. It should take {duration}, at $100 an hour.")
                     elif triage_result["trade"] == "plumber":
-                        send(sender, case_id, f"Just heard back from him. {slot.capitalize()} could work, and the repair should take {duration}.")
+                        send(sender, case_id, f"He says {slot} works. The repair should take {duration}.")
                     else:
-                        send(sender, case_id, f"Just heard back. {slot.capitalize()} could work, and the job may take {duration}.")
+                        send(sender, case_id, f"They say {slot} works. The job may take {duration}.")
                     if triage_result["trade"] == "cleaner":
                         reply = "Would 10:00 work for you?"
                     elif triage_result["trade"] == "plumber":
-                        reply = f"For normal wear and tear, the owner would cover this repair. Rough demo cost: {plan['estimate'][:45]}. Would 17:00 work?"
+                        prices = re.findall(r"\$\s*[\d,]+", plan["estimate"])
+                        price = "–".join(prices[:2]) if prices else plan["estimate"][:35]
+                        reply = f"This repair is on the owner, not the guest. I'd budget around {price}. Does 17:00 work for you?"
                     else:
-                        reply = f"Rough demo cost: {plan['estimate'][:45]}. Would that time work?"
+                        reply = f"I'd budget around {plan['estimate'][:35]}. Would that time work?"
                     send(sender, case_id, reply)
                     return reply
                 if decline:
@@ -130,7 +132,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         reply = ("Please keep clear of the wiring and get urgent qualified help." if trade == "electrician" and prior["severity"] == "high"
                                  else "If it is getting worse or feels unsafe, keep clear and get qualified help. I can still ask our demo specialist about a time.")
                     else:
-                        reply = f"I can ask our demo {trade} about the time and price. Want me to?"
+                        helper_phrase = {"electrician": "an electrician", "general maintenance": "a repair person"}.get(trade, f"a {trade}")
+                        reply = f"Want me to check with {helper_phrase} about the time and price?"
                     send(sender, case_id, reply)
                     return reply
             if not image and prior and re.search(r"\b(house is a mess|place is a mess|needs cleaning|dirty|another issue|new issue)\b", body, re.I):
@@ -200,7 +203,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 first += " Please keep clear of the wiring and seek urgent qualified help."
             send(sender, case_id, first)
             helper = "cleaner" if trade == "cleaner" else ("plumber" if trade == "plumber" else trade)
-            reply = f"Want me to ask our demo {helper} if they can come by?"
+            helper_phrase = {"electrician": "an electrician", "general maintenance": "a repair person"}.get(helper, f"a {helper}")
+            reply = f"Want me to see if {helper_phrase} can come by? I'm just simulating the call here."
             send(sender, case_id, reply)
             return reply
         except Exception as exc:
