@@ -116,7 +116,18 @@ def test_bob_asks_for_details_and_does_not_assign_renter_liability(tmp_path):
     post(client, "SM3", "How much will the renter pay for this?")
     answer = rows(settings.database_path, "messages")[-1]["body"]
     assert "owner would cover" in answer
-    assert "unusual damage" in answer
+    assert "guest-caused damage" in answer
+
+
+def test_pending_photo_waits_for_casual_consent_and_does_not_invent_availability(tmp_path):
+    client, settings = setup(tmp_path)
+    post(client, "SM1", image=True)
+    post(client, "SM2", "How much would it cost?")
+    assert "Want me to?" in rows(settings.database_path, "messages")[-1]["body"]
+    assert not rows(settings.database_path, "tasks")
+    post(client, "SM3", "yea")
+    assert len(rows(settings.database_path, "tasks")) == 1
+    assert "17:00" in rows(settings.database_path, "messages")[-2]["body"]
 
 
 def test_observer_shows_saved_handoffs_and_requires_password_in_live_mode(tmp_path):
@@ -248,7 +259,7 @@ def test_gemini_conversation_waits_for_photo_then_stages_handoff(tmp_path, monke
     assert len(messages[-2]["body"]) < 140
     assert f"Want me to ask our demo {trade}" in messages[-1]["body"]
     assert not rows(settings.database_path, "tasks")
-    response = client.post("/chat/message", auth=auth, data={"body": "yes"})
+    response = client.post("/chat/message", auth=auth, data={"body": "yea"})
     assert response.status_code == 200
     messages = rows(settings.database_path, "messages")
     assert "talking to our demo" in messages[-3]["body"]
@@ -451,7 +462,7 @@ def test_captioned_mock_photo_and_later_property_context(tmp_path):
     assert rows(settings.database_path, "cases")[0]["trade"] == "plumber"
     post(client, "SM8", "Property: Unit 3\nWhat happens next?")
     assert rows(settings.database_path, "cases")[0]["property_context"] == "Unit 3"
-    assert "simulated Plumber Agent" in rows(settings.database_path, "messages")[-1]["body"]
+    assert "demo plumber" in rows(settings.database_path, "messages")[-1]["body"]
 
 
 def test_workflow_has_no_whatsapp_or_database_dependency(tmp_path):

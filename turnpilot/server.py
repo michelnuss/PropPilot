@@ -78,7 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if image and prior and prior["plan_json"] != "{}" and not re.search(r"\b(update|same issue|more photos?|additional photo)\b", body, re.I):
                 new_issue = True
             if not image and prior and store.pending_handoff(prior["id"]):
-                affirmative = bool(re.match(r"^\s*(?:yes|yeah|yep|sure|ok(?:ay)?|please do|go ahead|do it)(?:\s+(?:please|go ahead|do it))?\s*[.!]?\s*$", body, re.I))
+                affirmative = bool(re.match(r"^\s*(?:yes|yea|yeah|yep|yup|ya|sure|absolutely|sounds good|ok(?:ay)?|please do|go ahead|do it)(?:\s+(?:please|go ahead|do it))?\s*[.!]?\s*$", body, re.I))
                 decline = bool(re.match(r"^\s*(?:no|no thanks|not yet|maybe later)\s*[.!]?\s*$", body, re.I))
                 if affirmative:
                     case_id = prior["id"]
@@ -117,13 +117,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     reply = "No problem. Just say yes if you'd like me to check later."
                     send(sender, case_id, reply)
                     return reply
+                if not new_issue and not re.search(r"\b(house is a mess|place is a mess|needs cleaning|dirty)\b", body, re.I):
+                    case_id = prior["id"]
+                    store.attach(message_id, case_id)
+                    if property_context:
+                        store.set_property_context(case_id, property_context)
+                    trade = prior["trade"].lower()
+                    if re.search(r"who pays|tenant pay|renter pay|owner pay|landlord pay|responsib|charge", body, re.I):
+                        reply = ("For normal plumbing wear and tear, the owner would cover it. Unusual guest-caused damage needs the owner's review."
+                                 if trade == "plumber" else "I'd put this on the owner's side for now. Unusual guest-caused damage needs a separate review.")
+                    elif re.search(r"urgent|urgency|emergency|how soon", body, re.I):
+                        reply = ("Please keep clear of the wiring and get urgent qualified help." if trade == "electrician" and prior["severity"] == "high"
+                                 else "If it is getting worse or feels unsafe, keep clear and get qualified help. I can still ask our demo specialist about a time.")
+                    else:
+                        reply = f"I can ask our demo {trade} about the time and price. Want me to?"
+                    send(sender, case_id, reply)
+                    return reply
             if not image and prior and re.search(r"\b(house is a mess|place is a mess|needs cleaning|dirty|another issue|new issue)\b", body, re.I):
                 new_issue = True
             if not image and prior and not new_issue:
                 case_id = prior["id"]
                 store.attach(message_id, case_id)
                 last_outbound = store.last_outbound(case_id)
-                if re.match(r"^\s*(?:yes|yeah|yep|sure|ok(?:ay)?|that works|sounds good)\s*[.!]?\s*$", body, re.I) and last_outbound and re.search(r"\bwork(?: for you)?\?", last_outbound, re.I):
+                if re.match(r"^\s*(?:yes|yea|yeah|yep|yup|ya|sure|ok(?:ay)?|that works|sounds good)\s*[.!]?\s*$", body, re.I) and last_outbound and re.search(r"\bwork(?: for you)?\?", last_outbound, re.I):
                     name = "Michel" if sender.startswith("browser:") and settings.mode == "demo" else ""
                     closing = f"Of course, {name}—need anything else?" if name else "Of course—need anything else?"
                     reply = f"Got it, I've saved that as the demo time. {closing}"
