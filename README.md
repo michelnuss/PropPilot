@@ -10,7 +10,7 @@ A WhatsApp-only homeowner chat with a small internal observer page for the found
 - **Mock mode:** runs locally without credentials. The `demo/broken_sink.png` fixture follows a deterministic plumber path. The reply says `[MOCK MODE]`, and outbound messages are saved to SQLite but **not sent to WhatsApp**. Mock mode does not analyze pixels.
 - Both modes run separate triage, dispatcher, and specialist steps, recorded in `agent_actions`.
 - `turnpilot/workflow.py` is the transport-independent Founder 2 entry point. Its `inspect(...)` function returns the three decisions and a reply; the optional `on_action` callback records each completed step. Gabi's WhatsApp adapter can call this without importing Twilio code.
-- `turnpilot/static/bob.png` is Bob's cartoon avatar on the internal observer page. The app does not set the Twilio Sandbox profile image.
+- `turnpilot/static/bob.png` is Bob's cartoon avatar on the internal observer page. `assets/bob-whatsapp-profile.png` is a square, opaque portrait prepared for a future registered WhatsApp sender. Twilio's shared Sandbox number keeps the Twilio logo; its face cannot be replaced for the test. After your own sender is approved, Twilio allows a profile photo through **Messaging → Senders → WhatsApp senders**. See [Twilio's profile instructions](https://www.twilio.com/docs/whatsapp/editing-your-whatsapp-business-profile). The 2-minute screen-share script is in [docs/TWO_MINUTE_PITCH.md](docs/TWO_MINUTE_PITCH.md).
 
 ## Run locally and test without credentials
 
