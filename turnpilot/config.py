@@ -24,14 +24,15 @@ class Settings:
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
     def validate(self) -> None:
-        if self.mode not in {"mock", "live"}:
-            raise ValueError("APP_MODE must be mock or live")
+        if self.mode not in {"mock", "demo", "live"}:
+            raise ValueError("APP_MODE must be mock, demo, or live")
         if self.provider not in {"gemini", "openai"}:
             raise ValueError("AI_PROVIDER must be gemini or openai")
+        if self.mode in {"demo", "live"}:
+            if self.provider == "gemini" and not self.gemini_key:
+                raise ValueError("Gemini mode requires GEMINI_API_KEY")
+            if self.provider == "openai" and not self.openai_key:
+                raise ValueError("OpenAI mode requires OPENAI_API_KEY")
         if self.mode == "live":
             if not all([self.twilio_sid, self.twilio_token, self.twilio_from, self.webhook_url]):
                 raise ValueError("Live mode requires Twilio credentials and webhook URL")
-            if self.provider == "gemini" and not self.gemini_key:
-                raise ValueError("Live Gemini mode requires GEMINI_API_KEY")
-            if self.provider == "openai" and not self.openai_key:
-                raise ValueError("Live OpenAI mode requires OPENAI_API_KEY")

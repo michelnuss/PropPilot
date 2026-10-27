@@ -1,29 +1,27 @@
 # TurnPilot AI — two-minute live pitch
 
-No slides. Screen-share the WhatsApp conversation and TurnPilot's `/observer` page. Rehearse to about two minutes. **Gabi** drives the screen; **Michel** narrates Bob's handoffs.
+No slides. Michel tells the homeowner's story and drives the demo. Gabi explains the agents and backend. Rehearse to about two minutes.
 
 ## Script
 
-**Gabi — 0:00–0:30 (show the WhatsApp photo, before sending)**
+**Michel — 0:00–0:50 (show the staged sink photo)**
 
-Meet Ana. She manages 100 rental homes in Miami. A guest sends this photo: a broken sink pipe. In the old game, Ana identifies the unit, figures out the issue, reaches a plumber, updates the guest, and tracks what happened. At just one issue per home per month and 15 minutes of triage, that's **25 hours monthly** before repairs start. Airbnb expects a response to time-sensitive in-stay issues within an hour during local daytime hours.
+Meet Sofia. She manages 100 short-term rentals. She's our hero. In the old game, a guest sends her this photo of water under a kitchen sink. Sofia stops what she's doing, works out which home it is, decides whether it's urgent, finds the right person, explains the problem again, and keeps the guest updated. At just one issue per home each month and 15 minutes to assess and route each one, that's **25 hours a month** before a repair even begins. Sofia didn't build a rental business to spend her days chasing leaks.
 
-**Michel — 0:30–1:20 (send the photo; switch to `/observer`; then return to WhatsApp)**
+**Michel — 0:50–1:10 (send the photo in the demo chat)**
 
-Now watch the new game. The guest sends the photo in WhatsApp. Bob identifies the visible leak, flags urgency, and routes it to a simulated plumber agent. On this screen, every handoff appears live: Bob, dispatcher, plumber. Ask “How urgent is it?” Bob answers from the photo and case history. Ask “Who pays?” He won't invent a charge. Say “cancel,” and the draft closes. No vendor is contacted or booked in this demo.
+Here's the new game. The guest sends the same photo. Bob sees the visible leak, tells the guest what to do now, and starts the right repair workflow. Watch what happens behind that one conversation.
 
-**Gabi — 1:20–1:45 (show the case and action log)**
+**Gabi — 1:10–1:35 (show `/observer`)**
 
-Miami city has about **135,000 renter households**. AirDNA tracks **18,289 active short-term rental listings** across Airbnb, Vrbo, and Booking.com in its Miami market. Ana already has a trusted plumber and cleaner. Our next step is connecting Bob to her team, not selling her another marketplace.
+Bob is our inspection agent. He examines the photo and chooses the trade. The dispatcher records that decision and routes the case to a plumber specialist agent. The specialist prepares a draft plan, a rough estimate, and a possible slot. These are separate software steps, saved with the case and its message history. Today, the plumber, estimate, and slot are **simulated**. No contractor has been contacted or booked.
 
-**Michel — 1:45–2:00 (end on Bob's response)**
+**Michel — 1:35–2:00 (return to chat; ask “How urgent is it?”)**
 
-Ana is the hero. One WhatsApp conversation gives her context, speed, and control across 100 homes. TurnPilot lets her run the portfolio instead of chasing the next leak.
+Now Sofia asks, “How urgent is it?” Bob remembers the photo and the case. She can ask what it might cost, or cancel the draft. Tomorrow, Bob can connect with the trusted partners she already uses. The future isn't another dashboard for Sofia to manage. It's 100 homes with someone paying attention, while Sofia keeps control. **Sofia is the hero. Bob gives her time back.**
 
-## Number notes for founders and judges
+## Number and demo notes
 
-- **~135,000 renter households** is an approximation, not a count of individual people. [U.S. Census QuickFacts for Miami city](https://www.census.gov/quickfacts/fact/table/miamicityflorida/PST040223) reports 194,821 households and a 30.8% owner-occupied rate for 2020–2024. Calculation: 194,821 × 69.2% ≈ 134,816 renter-occupied households.
-- **18,289 active short-term rental listings** is [AirDNA's Miami market figure](https://www.airdna.co/vacation-rental-data/app/us/florida/miami/overview), covering September 2026 and updated October 20, 2026. It covers Airbnb, Vrbo, and Booking.com, de-duplicates the same home across channels, and is **not** a count of unique hosts or Airbnb-only properties. Its market boundary need not match the Census city boundary.
-- **One-hour response expectation:** [Airbnb's host ground rules](https://www.airbnb.com/help/article/2895) state that for time-sensitive in-stay issues during local daytime hours, hosts are expected to respond within one hour.
 - **25 hours/month** is an illustrative scenario: 100 homes × one issue per home per month × 15 minutes of manual triage = 1,500 minutes. It is not measured TurnPilot savings.
-- Present the plumber handoff, estimate, and slot as **simulated**. The current repo has verified Gemini photo triage and local webhook tests; a real Twilio phone-to-phone run still requires Sandbox setup and testing.
+- If showing the browser chat, call it the **browser demo of Bob's WhatsApp-style conversation**. A real Twilio phone-to-phone run still requires Sandbox setup and testing.
+- Estimates, slots, and specialist handoffs are simulated; no vendor contact or booking has occurred.

@@ -20,11 +20,29 @@ def _sniff(data: bytes) -> str | None:
     return None
 
 
+def validate_image(data: bytes, declared_mime: str) -> str:
+    mime = declared_mime.split(";", 1)[0].lower()
+    if mime not in ALLOWED_MIME:
+        raise ValueError("Only JPEG, PNG, or WebP photos are supported")
+    if not data or len(data) > MAX_BYTES:
+        raise ValueError("Photo must be under 8 MB")
+    if _sniff(data) != mime:
+        raise ValueError("Photo content does not match its media type")
+    return mime
+
+
+def save_image(settings: Settings, data: bytes, declared_mime: str, message_id: int) -> tuple[Path, str]:
+    mime = validate_image(data, declared_mime)
+    settings.media_dir.mkdir(parents=True, exist_ok=True)
+    destination = settings.media_dir / f"message-{message_id}{ALLOWED_MIME[mime]}"
+    destination.write_bytes(data)
+    return destination, mime
+
+
 def download_image(settings: Settings, url: str, declared_mime: str, message_id: int) -> tuple[Path, str]:
     mime = declared_mime.split(";", 1)[0].lower()
     if mime not in ALLOWED_MIME:
         raise ValueError("Only JPEG, PNG, or WebP photos are supported")
-    settings.media_dir.mkdir(parents=True, exist_ok=True)
     if settings.mode == "mock" and url == "mock://sink":
         source = Path(__file__).parent.parent / "demo" / "broken_sink.png"
         data = source.read_bytes()
@@ -45,11 +63,4 @@ def download_image(settings: Settings, url: str, declared_mime: str, message_id:
                         raise ValueError("Photo exceeds 8 MB limit")
                     chunks.append(chunk)
                 data = b"".join(chunks)
-    if len(data) > MAX_BYTES:
-        raise ValueError("Photo exceeds 8 MB limit")
-    actual_mime = _sniff(data)
-    if actual_mime != mime:
-        raise ValueError("Photo content does not match its media type")
-    destination = settings.media_dir / f"message-{message_id}{ALLOWED_MIME[mime]}"
-    destination.write_bytes(data)
-    return destination, mime
+    return save_image(settings, data, mime, message_id)

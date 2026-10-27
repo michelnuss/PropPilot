@@ -131,6 +131,23 @@ class Store:
                 "SELECT direction,body FROM messages WHERE case_id=? ORDER BY id DESC LIMIT 12", (case_id,)
             ).fetchall()][::-1]
 
+    def chat_messages(self, sender: str):
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT m.id,m.direction,m.body,m.status,m.created_at,p.id AS photo_id "
+                "FROM messages m LEFT JOIN photos p ON p.message_id=m.id "
+                "WHERE m.sender=? ORDER BY m.id DESC LIMIT 100", (sender,)
+            ).fetchall()
+        return [dict(row) for row in reversed(rows)]
+
+    def chat_photo(self, photo_id: int, sender: str):
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT p.path,p.mime FROM photos p JOIN messages m ON m.id=p.message_id "
+                "WHERE p.id=? AND m.sender=?", (photo_id, sender)
+            ).fetchone()
+        return dict(row) if row else None
+
     def actions(self, limit: int = 30):
         with self.connect() as db:
             return [dict(row) for row in db.execute(

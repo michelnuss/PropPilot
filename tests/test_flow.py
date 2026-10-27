@@ -24,8 +24,9 @@ def setup(tmp_path, mode="mock", provider="openai"):
         twilio_sid="ACtest" if mode == "live" else "",
         twilio_token="token" if mode == "live" else "",
         webhook_url="https://example.com/whatsapp" if mode == "live" else "",
-        openai_key="test" if mode == "live" else "",
-        gemini_key="test" if mode == "live" and provider == "gemini" else "",
+        openai_key="test" if mode in {"live", "demo"} else "",
+        gemini_key="test" if mode in {"live", "demo"} and provider == "gemini" else "",
+        observer_password="demo-password" if mode == "demo" else "",
     )
     return TestClient(create_app(settings)), settings
 
@@ -118,6 +119,74 @@ def test_observer_shows_saved_handoffs_and_requires_password_in_live_mode(tmp_pa
     assert live_client.get("/observer/state", auth=("demo", "wrong")).status_code == 401
     assert live_client.get("/observer/state", auth=("demo", "demo-secret")).status_code == 200
     assert TestClient(create_app(replace(live, observer_password=""))).get("/observer").status_code == 404
+
+
+def test_browser_chat_uses_saved_photo_case_and_followup(tmp_path):
+    client, settings = setup(tmp_path)
+    assert client.get("/chat").status_code == 200
+    assert "Bob" in client.get("/chat").text
+    assert client.get("/chat/sample/leaking-sink.png").status_code == 200
+    assert client.get("/chat/sample/unknown.png").status_code == 404
+    photo = Path("demo/scenarios/leaking-sink.png").read_bytes()
+    response = client.post("/chat/message", data={"body": "Property: Unit 2"}, files={"photo": ("sink.png", photo, "image/png")})
+    assert response.status_code == 200
+    assert "simulated Plumber Agent" in response.json()["reply"]
+    messages = client.get("/chat/state").json()["messages"]
+    assert len(messages) == 2
+    assert messages[0]["photo_url"].startswith("/chat/photo/")
+    assert client.get(messages[0]["photo_url"]).content == photo
+    response = client.post("/chat/message", data={"body": "How urgent is it?"})
+    assert "urgency" in response.json()["reply"]
+    assert len(rows(settings.database_path, "cases")) == 1
+    assert len(rows(settings.database_path, "agent_actions")) == 4
+    other = TestClient(client.app)
+    other.get("/chat")
+    assert other.get("/chat/state").json()["messages"] == []
+    assert other.get(messages[0]["photo_url"]).status_code == 404
+
+
+def test_browser_chat_rejects_fake_images_and_demo_requires_password(tmp_path, monkeypatch):
+    client, settings = setup(tmp_path)
+    client.get("/chat")
+    response = client.post("/chat/message", files={"photo": ("fake.png", b"not an image", "image/png")})
+    assert response.status_code == 400
+    assert rows(settings.database_path, "messages") == []
+    demo, demo_settings = setup(tmp_path, "demo", "gemini")
+    assert demo.get("/chat").status_code == 401
+    assert demo.get("/chat", auth=("demo", "demo-password")).status_code == 200
+    assert demo.get("/chat/state", auth=("demo", "demo-password")).status_code == 200
+    assert demo.post("/whatsapp", data={"MessageSid": "x", "From": SENDER}).status_code == 404
+    assert TestClient(create_app(replace(demo_settings, observer_password=""))).get("/chat").status_code == 404
+
+    calls = []
+    def fake_model(settings, instructions, text, image=None, *, schema, name):
+        calls.append((name, bool(image)))
+        if name == "inspection_triage":
+            return {"trade": "electrician", "issue": "Broken outlet", "severity": "high", "visible_evidence": "Exposed wire", "uncertainty": "Needs an on-site check"}
+        if name == "specialist_draft":
+            return {"diagnosis": "Possible damaged outlet", "repair_plan": "Keep clear; qualified electrician to inspect", "estimate": "$200-$400", "slot": "Tomorrow 10 AM"}
+        return {"answer": "Keep clear of the outlet. This is a simulated plan; no booking exists."}
+    monkeypatch.setattr("turnpilot.agents._model_json", fake_model)
+    photo = Path("demo/scenarios/damaged-outlet.png").read_bytes()
+    response = demo.post("/chat/message", auth=("demo", "demo-password"), files={"photo": ("outlet.png", photo, "image/png")})
+    assert response.status_code == 200
+    assert "simulated Electrician Agent" in response.json()["reply"]
+    response = demo.post("/chat/message", auth=("demo", "demo-password"), data={"body": "How urgent is it?"})
+    assert response.status_code == 200
+    assert calls == [("inspection_triage", True), ("specialist_draft", False), ("case_followup", False)]
+
+
+def test_live_browser_preview_never_sends_twilio(tmp_path, monkeypatch):
+    _, settings = setup(tmp_path, "live")
+    settings = replace(settings, observer_password="demo-password")
+    client = TestClient(create_app(settings))
+    def unexpected_twilio(*args):
+        raise AssertionError("Browser preview must not call Twilio")
+    monkeypatch.setattr("turnpilot.server.Client", unexpected_twilio)
+    assert client.get("/chat", auth=("demo", "demo-password")).status_code == 200
+    response = client.post("/chat/message", auth=("demo", "demo-password"), data={"body": "Hello"})
+    assert response.status_code == 200
+    assert rows(settings.database_path, "messages")[-1]["status"] == "browser_demo"
 
 
 def test_bad_media_is_logged_and_reported(tmp_path):

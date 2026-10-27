@@ -2,12 +2,13 @@
 
 **Two-founder integration:** see [docs/FOUNDER_HANDOFF.md](docs/FOUNDER_HANDOFF.md) for ownership, agent function contracts, and merge steps.
 
-A WhatsApp-only homeowner chat with a small internal observer page for the founders. **Bob**, the inspection agent, receives a photo or text report and runs **inspection/triage → dispatcher → simulated trade specialist**. Bob answers follow-up questions, asks for missing details, and can cancel a draft case. No real contractor is contacted, no booking is made, no payment is taken, and estimates and slots are simulated.
+A WhatsApp homeowner chat with a WhatsApp-style browser preview and a small internal observer page for the founders. **Bob**, the inspection agent, receives a photo or text report and runs **inspection/triage → dispatcher → simulated trade specialist**. Bob answers follow-up questions, asks for missing details, and can cancel a draft case. No real contractor is contacted, no booking is made, no payment is taken, and estimates and slots are simulated.
 
 ## What is real and what is simulated
 
 - **Live mode:** Twilio WhatsApp Sandbox receives actual messages and photos; the server downloads the photo, sends its bytes to a vision-capable Gemini model (or OpenAI if selected), persists the case in SQLite, and replies through Twilio.
 - **Mock mode:** runs locally without credentials. The `demo/broken_sink.png` fixture follows a deterministic plumber path. The reply says `[MOCK MODE]`, and outbound messages are saved to SQLite but **not sent to WhatsApp**. Mock mode does not analyze pixels.
+- **Demo mode:** set `APP_MODE=demo`, `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, and `OBSERVER_PASSWORD`. Open `/chat` for a WhatsApp-style browser preview that uses the real Gemini vision and follow-up path without Twilio credentials. Replies and uploaded images stay in SQLite/local files; no WhatsApp message is sent.
 - Both modes run separate triage, dispatcher, and specialist steps, recorded in `agent_actions`.
 - `turnpilot/workflow.py` is the transport-independent Founder 2 entry point. Its `inspect(...)` function returns the three decisions and a reply; the optional `on_action` callback records each completed step. Gabi's WhatsApp adapter can call this without importing Twilio code.
 - `turnpilot/static/bob.png` is Bob's cartoon avatar on the internal observer page. `assets/bob-whatsapp-profile.png` is a square, opaque portrait prepared for a future registered WhatsApp sender. Twilio's shared Sandbox number keeps the Twilio logo; its face cannot be replaced for the test. After your own sender is approved, Twilio allows a profile photo through **Messaging → Senders → WhatsApp senders**. See [Twilio's profile instructions](https://www.twilio.com/docs/whatsapp/editing-your-whatsapp-business-profile). The 2-minute screen-share script is in [docs/TWO_MINUTE_PITCH.md](docs/TWO_MINUTE_PITCH.md).
@@ -54,6 +55,15 @@ sqlite3 data/turnpilot.db 'select agent, action, detail_json from agent_actions 
 `GET http://127.0.0.1:8000/dev/actions` is a minimal developer log endpoint available only in mock mode.
 
 Open `http://127.0.0.1:8000/observer` to watch Bob, the dispatcher, and specialists hand off a case as saved actions arrive. The page refreshes every 1.5 seconds. In live mode, set `OBSERVER_PASSWORD` in `.env` first; the browser prompts for username `demo` and that password. If no password is set, the page is disabled in live mode. The homeowner never needs this page.
+
+## Browser chat for the pitch
+
+1. In your private `.env`, set `APP_MODE=demo`, `AI_PROVIDER=gemini`, a valid `GEMINI_API_KEY`, and `OBSERVER_PASSWORD` to a password you choose. Twilio credentials are not needed for this mode.
+2. Run `uvicorn turnpilot.server:app --host 127.0.0.1 --port 8000` and open `http://127.0.0.1:8000/chat`. The browser asks for username `demo` and your `OBSERVER_PASSWORD`.
+3. Click **Leaking sink** to attach the staged photo, then press send. Bob's response comes from the live Gemini agent workflow and is saved to SQLite. Ask “How urgent is it?” in the same chat. Open `/observer` in another tab to show the triage → dispatcher → plumber handoffs.
+4. Use the other sample buttons to attach outlet, window, or cleaning photos. Add `new issue` to the caption when you want a separate case. The uploaded photo remains visible after a reload in the same browser session.
+
+The preview borrows WhatsApp's familiar chat layout and colors but is labeled **Browser demo**. It does not send a WhatsApp message. `APP_MODE=mock` can also open `/chat`, but mock answers do not inspect image pixels. In `APP_MODE=live`, the browser preview remains available with the same password, alongside the Twilio webhook. Keep `/chat` and `/observer` password-protected when using a public tunnel. Do not put API keys in browser code or commit `.env`.
 
 ## Connect a real WhatsApp chat
 

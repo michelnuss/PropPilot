@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bob · TurnPilot AI browser demo</title>
+  <style>
+    :root { color-scheme:light; --green:#008069; --dark:#005c4b; --ink:#111b21; --muted:#52636d; --panel:#f0f2f5; --line:#e9edef; --wall:#efeae2; --sent:#d9fdd3; --white:#fff; }
+    * { box-sizing:border-box; }
+    html,body { height:100%; margin:0; }
+    body { background:#d9dbd5; color:var(--ink); font-family:"Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    body::before { content:""; position:fixed; inset:0 0 auto; height:125px; background:var(--green); }
+    button,textarea { font:inherit; }
+    button { cursor:pointer; }
+    button:focus-visible,textarea:focus-visible,input:focus-visible { outline:3px solid #54c4ad; outline-offset:2px; }
+    .shell { position:relative; display:grid; grid-template-columns:340px minmax(0,1fr); max-width:1440px; height:calc(100dvh - 38px); min-height:530px; margin:19px auto; background:var(--white); box-shadow:0 6px 25px #0002; overflow:hidden; }
+    .sidebar { display:flex; flex-direction:column; border-right:1px solid #d1d7db; min-width:0; background:var(--white); }
+    .side-top { display:flex; align-items:center; justify-content:space-between; min-height:64px; padding:0 18px; background:var(--panel); }
+    .side-top strong { font-size:19px; letter-spacing:-.03em; }
+    .side-top span { font-size:12px; color:var(--muted); }
+    .side-intro { padding:17px 19px 13px; border-bottom:1px solid var(--line); }
+    .side-intro h1 { margin:0 0 5px; font-size:21px; letter-spacing:-.03em; }
+    .side-intro p { margin:0; font-size:14px; line-height:1.45; color:var(--muted); }
+    .chat-choice { display:flex; width:100%; align-items:center; gap:12px; text-align:left; border:0; border-bottom:1px solid var(--line); padding:13px 17px; background:#f6f7f7; }
+    .chat-choice img,.profile img { width:49px; height:49px; border-radius:50%; object-fit:cover; object-position:center 26%; background:#e6ede7; }
+    .chat-choice strong,.chat-choice small { display:block; }
+    .chat-choice strong { font-size:16px; }
+    .chat-choice small { margin-top:4px; font-size:12px; color:var(--muted); }
+    .side-bottom { margin-top:auto; padding:17px 19px; color:var(--muted); font-size:13px; line-height:1.55; border-top:1px solid var(--line); }
+    .side-bottom a { color:var(--dark); font-weight:600; }
+    .conversation { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--wall); }
+    .header { display:flex; align-items:center; gap:12px; min-height:66px; padding:8px 19px; background:var(--panel); border-bottom:1px solid #d9dfe2; }
+    .profile { display:flex; align-items:center; gap:11px; min-width:0; }
+    .profile img { width:44px; height:44px; }
+    .profile strong,.profile small { display:block; }
+    .profile strong { font-size:16px; }
+    .profile small { margin-top:2px; color:var(--muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .header-mark { margin-left:auto; color:var(--dark); font-size:12px; font-weight:700; border:1px solid #a5cec3; border-radius:99px; padding:6px 9px; white-space:nowrap; }
+    .notice { padding:8px 18px; text-align:center; background:#fff5d7; color:#5b5135; font-size:12px; line-height:1.4; }
+    .wall { flex:1; min-height:0; overflow:auto; padding:25px clamp(16px,5vw,66px) 28px; background-color:var(--wall); background-image:radial-gradient(#8c9b8a19 1px, transparent 1px); background-size:25px 25px; }
+    .date { width:max-content; max-width:100%; margin:0 auto 24px; padding:7px 13px; color:#53656e; background:#fffdf9e6; box-shadow:0 1px 2px #0001; border-radius:8px; font-size:12px; }
+    .welcome { max-width:560px; margin:0 auto 24px; padding:18px; background:#fffefb; border:1px solid #e7e0d5; border-radius:13px; box-shadow:0 1px 2px #0001; }
+    .welcome strong { font-size:16px; }
+    .welcome p { font-size:14px; line-height:1.5; color:#3b4b52; margin:8px 0 14px; }
+    .samples { display:flex; gap:8px; flex-wrap:wrap; }
+    .samples button { border:1px solid #9bc8b9; border-radius:20px; background:#f3faf6; color:var(--dark); font-size:12px; font-weight:600; padding:8px 11px; }
+    .samples button:hover { background:#e5f6eb; }
+    .message { display:flex; margin:0 0 10px; }
+    .message.out { justify-content:flex-end; }
+    .bubble { max-width:min(78%,610px); min-width:90px; padding:8px 10px 6px; background:var(--white); border-radius:0 8px 8px 8px; box-shadow:0 1px 2px #0002; overflow-wrap:anywhere; }
+    .out .bubble { background:var(--sent); border-radius:8px 0 8px 8px; }
+    .bubble p { margin:0; white-space:pre-wrap; line-height:1.45; font-size:14px; }
+    .bubble img { display:block; width:100%; max-height:320px; object-fit:contain; border-radius:5px; margin-bottom:7px; background:#ddd; }
+    .meta { display:block; margin:5px 0 0; text-align:right; color:#52636d; font-size:12px; }
+    .typing { display:none; width:max-content; margin:0 0 10px; padding:12px 17px; background:#fff; border-radius:0 8px 8px 8px; color:var(--muted); font-size:13px; box-shadow:0 1px 2px #0002; }
+    .typing.active { display:block; }
+    .attachment { display:none; align-items:center; gap:12px; min-height:70px; padding:8px 18px; background:#e9edef; border-top:1px solid #d9dfe2; }
+    .attachment.active { display:flex; }
+    .attachment img { width:52px; height:52px; object-fit:cover; border-radius:6px; }
+    .attachment span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+    .attachment button { border:0; background:transparent; color:#5d717b; font-size:24px; }
+    .composer { display:flex; align-items:flex-end; gap:10px; padding:11px 16px; background:var(--panel); }
+    .attach-button,.send-button { display:grid; place-items:center; flex:none; width:42px; height:42px; border:0; border-radius:50%; background:transparent; color:#54656f; font-size:24px; }
+    .attach-button:hover { background:#e2e6e9; }
+    .send-button { background:var(--green); color:white; font-size:21px; }
+    .send-button:hover { background:#006e5d; }
+    .send-button:disabled { opacity:.5; cursor:wait; }
+    textarea { flex:1; resize:none; min-height:42px; max-height:120px; padding:11px 13px; border:0; border-radius:9px; background:white; color:var(--ink); line-height:1.35; font-size:14px; }
+    textarea::placeholder { color:#7c8b93; }
+    .error { display:none; padding:8px 17px; background:#fee6e6; color:#8c2424; font-size:12px; }
+    .error.active { display:block; }
+    .footer { background:var(--panel); color:#52636d; text-align:center; font-size:12px; padding:0 12px 9px; }
+    @media (max-width:800px) { .shell { grid-template-columns:240px minmax(0,1fr); } }
+    @media (max-width:620px) { body { background:var(--wall); } body::before,.sidebar { display:none; } .shell { display:block; height:100dvh; min-height:0; margin:0; box-shadow:none; } .conversation { height:100%; } .header { min-height:61px; padding:7px 12px; } .wall { padding:18px 13px; } .bubble { max-width:88%; } .composer { padding:8px; gap:5px; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-top"><strong>TurnPilot AI</strong><span>Founder preview</span></div>
+      <div class="side-intro"><h1>Chats</h1><p>Try a property issue with Bob. This preview uses the same agent workflow as the WhatsApp integration.</p></div>
+      <div class="chat-choice"><img src="/chat/bob.png" alt="Bob's cartoon construction worker portrait"><span><strong>Bob</strong><small>Property care · inspection agent</small></span></div>
+      <div class="side-bottom">This is a browser demo. It does not send a WhatsApp message or contact a contractor.<br><br><a href="/observer" target="_blank" rel="noopener">Watch agent handoffs</a></div>
+    </aside>
+    <main class="conversation">
+      <header class="header"><div class="profile"><img src="/chat/bob.png" alt="Bob"><div><strong>Bob</strong><small id="connection">Connecting…</small></div></div><span class="header-mark">Browser demo</span></header>
+      <div class="notice">Bob's specialist, estimates, and slots are simulated. No contractor is contacted or booked.</div>
+      <section id="wall" class="wall" aria-label="Conversation with Bob" aria-live="polite"><div class="date">Today</div><div class="welcome"><strong>Hi, I'm Bob 👋</strong><p>Tell me what's happening at the property, or send a clear photo. I can help assess it and prepare a draft repair request.</p><div class="samples" aria-label="Example inspection photos"><button type="button" data-sample="leaking-sink.png">💧 Leaking sink</button><button type="button" data-sample="damaged-outlet.png">⚡ Damaged outlet</button><button type="button" data-sample="broken-window.png">🪟 Broken window</button><button type="button" data-sample="turnover-cleaning.png">🧽 Cleaning</button></div></div></section>
+      <div id="typing" class="typing" role="status">Bob is checking the case…</div>
+      <div id="error" class="error" role="alert"></div>
+      <div id="attachment" class="attachment"><img id="preview" src="/chat/bob.png" alt="Photo to send"><span id="filename"></span><button type="button" id="remove" aria-label="Remove photo">×</button></div>
+      <form id="form" class="composer"><button type="button" id="attach" class="attach-button" title="Attach photo" aria-label="Attach photo">＋</button><input id="file" type="file" accept="image/jpeg,image/png,image/webp" hidden><textarea id="body" rows="1" placeholder="Type a message to Bob" aria-label="Message to Bob"></textarea><button id="send" class="send-button" type="submit" title="Send" aria-label="Send">➤</button></form>
+      <div class="footer">Browser preview · replies are saved here and use the configured agent mode</div>
+    </main>
+  </div>
+  <script>
+    const wall = document.getElementById('wall');
+    const form = document.getElementById('form');
+    const body = document.getElementById('body');
+    const fileInput = document.getElementById('file');
+    const attachment = document.getElementById('attachment');
+    const typing = document.getElementById('typing');
+    const error = document.getElementById('error');
+    let selectedFile = null;
+    let previewURL = null;
+    let busy = false;
+
+    function showError(message) { error.textContent = message; error.classList.toggle('active', Boolean(message)); }
+    function attachPhoto(file) {
+      if (!file) return;
+      if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) { showError('Choose a JPEG, PNG, or WebP photo under 8 MB.'); return; }
+      if (previewURL) URL.revokeObjectURL(previewURL);
+      selectedFile = file;
+      previewURL = URL.createObjectURL(file);
+      document.getElementById('preview').src = previewURL;
+      document.getElementById('filename').textContent = file.name;
+      attachment.classList.add('active');
+      showError('');
+      body.focus();
+    }
+    function clearPhoto() {
+      selectedFile = null;
+      fileInput.value = '';
+      attachment.classList.remove('active');
+      document.getElementById('preview').src = '/chat/bob.png';
+      if (previewURL) URL.revokeObjectURL(previewURL);
+      previewURL = null;
+    }
+    function clock(value) {
+      const date = new Date(value.replace(' ', 'T') + 'Z');
+      return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+    }
+    function render(messages) {
+      wall.replaceChildren();
+      const day = document.createElement('div'); day.className = 'date'; day.textContent = 'Today'; wall.append(day);
+      if (!messages.length) {
+        const welcome = document.createElement('div'); welcome.className = 'welcome';
+        const title = document.createElement('strong'); title.textContent = "Hi, I'm Bob 👋";
+        const explanation = document.createElement('p'); explanation.textContent = "Tell me what's happening at the property, or send a clear photo. I can help assess it and prepare a draft repair request.";
+        const samples = document.createElement('div'); samples.className = 'samples';
+        for (const [name,label] of [['leaking-sink.png','💧 Leaking sink'],['damaged-outlet.png','⚡ Damaged outlet'],['broken-window.png','🪟 Broken window'],['turnover-cleaning.png','🧽 Cleaning']]) {
+          const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+          button.addEventListener('click', () => selectSample(name)); samples.append(button);
+        }
+        welcome.append(title, explanation, samples); wall.append(welcome);
+      }
+      for (const message of messages) {
+        const row = document.createElement('div'); row.className = 'message ' + (message.direction === 'in' ? 'out' : 'in');
+        const bubble = document.createElement('div'); bubble.className = 'bubble';
+        if (message.photo_url) { const image = document.createElement('img'); image.src = message.photo_url; image.alt = 'Inspection photo'; image.loading = 'lazy'; bubble.append(image); }
+        if (message.body) { const text = document.createElement('p'); text.textContent = message.body; bubble.append(text); }
+        const time = document.createElement('span'); time.className = 'meta'; time.textContent = clock(message.created_at); bubble.append(time);
+        row.append(bubble); wall.append(row);
+      }
+      wall.scrollTop = wall.scrollHeight;
+    }
+    async function refresh() {
+      const response = await fetch('/chat/state', {cache:'no-store'});
+      if (!response.ok) throw new Error('The chat session expired. Reload this page.');
+      const state = await response.json();
+      document.getElementById('connection').textContent = state.mode === 'mock' ? 'Mock answers · no image analysis' : (state.provider === 'gemini' ? 'Gemini-powered property care' : 'AI-powered property care');
+      render(state.messages);
+    }
+    async function selectSample(name) {
+      try {
+        showError('');
+        const response = await fetch('/chat/sample/' + encodeURIComponent(name));
+        if (!response.ok) throw new Error('Could not load the sample photo.');
+        const blob = await response.blob();
+        attachPhoto(new File([blob], name, {type:'image/png'}));
+      } catch (exc) { showError(exc.message); }
+    }
+    document.getElementById('attach').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => attachPhoto(fileInput.files[0]));
+    document.getElementById('remove').addEventListener('click', clearPhoto);
+    body.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); } });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (busy || (!body.value.trim() && !selectedFile)) return;
+      busy = true; document.getElementById('send').disabled = true; typing.classList.add('active'); showError('');
+      const data = new FormData(); data.set('body', body.value.trim()); if (selectedFile) data.set('photo', selectedFile);
+      try {
+        const response = await fetch('/chat/message', {method:'POST', body:data});
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || 'Bob could not process that message.');
+        body.value = ''; clearPhoto(); await refresh();
+      } catch (exc) { showError(exc.message || 'Could not connect to Bob. Try again.'); }
+      finally { busy = false; document.getElementById('send').disabled = false; typing.classList.remove('active'); body.focus(); }
+    });
+    refresh().catch(exc => showError(exc.message));
+  </script>
+</body>
+</html>
