@@ -1,27 +1,28 @@
 # TurnPilot AI — two-minute live pitch
 
-No slides. Michel tells the homeowner's story and drives the demo. Gabi explains the agents and backend. Rehearse to about two minutes.
+No slides. Michel owns the full homeowner hero story and drives the chat demo. Gabi explains the working agent handoff and the broader agent vision. Rehearse to about two minutes.
 
 ## Script
 
-**Michel — 0:00–0:50 (show the staged sink photo)**
+**Michel — 0:00–1:10 (show the staged sink photo, then send it in Bob's chat)**
 
-Meet Sofia. She manages 100 short-term rentals. She's our hero. In the old game, a guest sends her this photo of water under a kitchen sink. Sofia stops what she's doing, works out which home it is, decides whether it's urgent, finds the right person, explains the problem again, and keeps the guest updated. At just one issue per home each month and 15 minutes to assess and route each one, that's **25 hours a month** before a repair even begins. Sofia didn't build a rental business to spend her days chasing leaks.
+Meet Sofia. She manages 100 short-term rentals. She's our hero. In the old game, a guest sends this photo of water under a kitchen sink. Sofia stops what she's doing, finds the right unit, decides whether it's urgent, calls around, repeats the story, and keeps the guest updated. At just one issue per home each month and 15 minutes to assess and route it, that's **25 hours a month** before repairs even begin.
 
-**Michel — 0:50–1:10 (send the photo in the demo chat)**
+Now watch the new game. The guest sends the same photo to Bob. Bob spots a possible leak and asks, "Want me to check with a plumber?" When Sofia says yes, Bob checks with our **simulated plumber agent** and comes back with a draft plan: tomorrow at 17:00, about two hours of work. Sofia can ask, "How urgent is it?" Bob remembers the photo and answers like a person. She can also cancel. Today this is a prototype: no real plumber has been contacted or booked. But Sofia can see how much work one conversation can take off her plate.
 
-Here's the new game. The guest sends the same photo. Bob sees the visible leak, tells the guest what to do now, and starts the right repair workflow. Watch what happens behind that one conversation.
+**Gabi — 1:10–1:55 (show `/observer`, then return to chat)**
 
-**Gabi — 1:10–1:35 (show `/observer`)**
+Bob is the first member of a property-care team. The working flow has an inspection agent, a dispatcher, and a specialist agent. Their handoffs and case history are saved here.
 
-Bob is our inspection agent. He examines the photo and chooses the trade. The dispatcher records that decision and routes the case to a plumber specialist agent. The specialist prepares a draft plan, a rough estimate, and a possible slot. These are separate software steps, saved with the case and its message history. Today, the plumber, estimate, and slot are **simulated**. No contractor has been contacted or booked.
+Imagine the next agents: a **turnover agent** that prepares cleaning checklists, a **guest concierge** that handles check-in questions, a **listing agent** that drafts Airbnb and Zillow updates, a **pricing agent** that suggests rate changes, and a **marketing agent** that drafts campaigns to fill slow nights. A portfolio briefing agent could tell Sofia what needs her attention across all 100 homes. Those are our roadmap, not features we're claiming work today. The agents will share property context and work with the partners Sofia already trusts, with Sofia approving real actions.
 
-**Michel — 1:35–2:00 (return to chat; ask “How urgent is it?”)**
+**Michel — 1:55–2:00 (end on Bob's reply)**
 
-Now Sofia asks, “How urgent is it?” Bob remembers the photo and the case. She can ask what it might cost, or cancel the draft. Tomorrow, Bob can connect with the trusted partners she already uses. The future isn't another dashboard for Sofia to manage. It's 100 homes with someone paying attention, while Sofia keeps control. **Sofia is the hero. Bob gives her time back.**
+Sofia is still the hero. Bob gives her time back to run the business.
 
 ## Number and demo notes
 
 - **25 hours/month** is an illustrative scenario: 100 homes × one issue per home per month × 15 minutes of manual triage = 1,500 minutes. It is not measured TurnPilot savings.
 - If showing the browser chat, call it the **browser demo of Bob's WhatsApp-style conversation**. A real Twilio phone-to-phone run still requires Sandbox setup and testing.
+- Bob, the dispatcher, and simulated trade specialists run today. Turnover, concierge, listing, pricing, marketing, and portfolio briefing agents are future concepts.
 - Estimates, slots, and specialist handoffs are simulated; no vendor contact or booking has occurred.

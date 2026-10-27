@@ -56,13 +56,21 @@ def test_photo_routes_persists_and_followup(tmp_path):
     assert len(rows(settings.database_path, "photos")) == 1
     assert Path(rows(settings.database_path, "photos")[0]["path"]).exists()
     actions = rows(settings.database_path, "agent_actions")
-    assert [a["agent"] for a in actions] == ["inspection_triage", "dispatcher", "plumber_agent"]
-    assert len(rows(settings.database_path, "tasks")) == 1
+    assert [a["agent"] for a in actions] == ["inspection_triage"]
+    assert not rows(settings.database_path, "tasks")
     reply = rows(settings.database_path, "messages")[-1]["body"]
-    assert "Connected to simulated Plumber Agent" in reply
-    assert "No vendor has been contacted or booked" in reply
-    assert "[MOCK MODE]" in reply
-    post(client, "SM2", "What might it cost?")
+    assert "Want me to ask our demo plumber" in reply
+    assert "[MOCK MODE]" in rows(settings.database_path, "messages")[-2]["body"]
+    post(client, "SM2", "yes")
+    actions = rows(settings.database_path, "agent_actions")
+    assert [a["agent"] for a in actions] == ["inspection_triage", "bob", "dispatcher", "plumber_agent"]
+    assert len(rows(settings.database_path, "tasks")) == 1
+    replies = [m["body"] for m in rows(settings.database_path, "messages")[-3:]]
+    assert "talking to our demo plumber" in replies[0]
+    assert "17:00" in replies[1] and "about 2 hours" in replies[1]
+    assert "owner would cover" in replies[2]
+    assert "Of course" not in replies[2]  # phone sender has no demo name
+    post(client, "SM3", "What might it cost?")
     followup = rows(settings.database_path, "messages")[-1]["body"]
     assert "$150–$350" in followup
     assert len(rows(settings.database_path, "cases")) == 1
@@ -74,46 +82,52 @@ def test_duplicate_sid_and_new_photo_updates_case(tmp_path):
     response = post(client, "SM1", image=True)
     assert "already received" in response.text
     assert len(rows(settings.database_path, "photos")) == 1
-    assert len(rows(settings.database_path, "tasks")) == 1
+    assert not rows(settings.database_path, "tasks")
     post(client, "SM2", "Here is an update", image=True)
     assert len(rows(settings.database_path, "cases")) == 1
     assert len(rows(settings.database_path, "photos")) == 2
-    assert len(rows(settings.database_path, "tasks")) == 2
+    assert not rows(settings.database_path, "tasks")
+    post(client, "SM3", "yes")
+    assert len(rows(settings.database_path, "tasks")) == 1
 
 
 def test_bob_cancels_only_the_draft_and_can_open_new_case(tmp_path):
     client, settings = setup(tmp_path)
     post(client, "SM1", image=True)
-    post(client, "SM2", "cancel the request")
+    post(client, "SM2", "yes")
+    post(client, "SM3", "cancel the request")
     case = rows(settings.database_path, "cases")[0]
     assert case["status"] == "cancelled"
     assert rows(settings.database_path, "tasks")[0]["status"] == "cancelled"
     assert rows(settings.database_path, "agent_actions")[-1]["agent"] == "bob"
-    assert "No vendor had been contacted or booked" in rows(settings.database_path, "messages")[-1]["body"]
-    post(client, "SM3", "The kitchen sink is leaking")
+    assert "Nothing was booked" in rows(settings.database_path, "messages")[-1]["body"]
+    post(client, "SM4", "The kitchen sink is leaking")
+    assert len(rows(settings.database_path, "cases")) == 1
+    post(client, "SM5", image=True)
     assert len(rows(settings.database_path, "cases")) == 2
 
 
 def test_bob_asks_for_details_and_does_not_assign_renter_liability(tmp_path):
     client, settings = setup(tmp_path)
     post(client, "SM1", "Something is broken")
-    assert "What happened, and where" in rows(settings.database_path, "messages")[-1]["body"]
+    assert "send a clear photo" in rows(settings.database_path, "messages")[-1]["body"]
     assert not rows(settings.database_path, "cases")
     post(client, "SM2", image=True)
     post(client, "SM3", "How much will the renter pay for this?")
     answer = rows(settings.database_path, "messages")[-1]["body"]
-    assert "No payment is requested" in answer
-    assert "depends on the lease" in answer
+    assert "owner would cover" in answer
+    assert "unusual damage" in answer
 
 
 def test_observer_shows_saved_handoffs_and_requires_password_in_live_mode(tmp_path):
     client, settings = setup(tmp_path)
     post(client, "SM1", image=True)
+    post(client, "SM2", "yes")
     page = client.get("/observer")
     assert page.status_code == 200 and "Meet the crew" in page.text
     assert client.get("/observer/bob.png").status_code == 200
     state = client.get("/observer/state").json()
-    assert [a["agent"] for a in state["actions"]][::-1] == ["inspection_triage", "dispatcher", "plumber_agent"]
+    assert [a["agent"] for a in state["actions"]][::-1] == ["inspection_triage", "bob", "dispatcher", "plumber_agent"]
     _, live_settings = setup(tmp_path, "live")
     live = replace(live_settings, observer_password="demo-secret")
     live_client = TestClient(create_app(live))
@@ -132,19 +146,42 @@ def test_browser_chat_uses_saved_photo_case_and_followup(tmp_path):
     photo = Path("demo/scenarios/leaking-sink.png").read_bytes()
     response = client.post("/chat/message", data={"body": "Property: Unit 2"}, files={"photo": ("sink.png", photo, "image/png")})
     assert response.status_code == 200
-    assert "simulated Plumber Agent" in response.json()["reply"]
+    assert "Want me to ask our demo plumber" in response.json()["reply"]
     messages = client.get("/chat/state").json()["messages"]
-    assert len(messages) == 2
+    assert len(messages) == 3
     assert messages[0]["photo_url"].startswith("/chat/photo/")
     assert client.get(messages[0]["photo_url"]).content == photo
+    assert "Want me to ask" in response.json()["reply"]
+    response = client.post("/chat/message", data={"body": "yes"})
+    assert "Would 17:00 work?" in response.json()["reply"]
+    response = client.post("/chat/message", data={"body": "yes"})
+    assert "need anything else?" in response.json()["reply"]
     response = client.post("/chat/message", data={"body": "How urgent is it?"})
     assert "urgency" in response.json()["reply"]
     assert len(rows(settings.database_path, "cases")) == 1
-    assert len(rows(settings.database_path, "agent_actions")) == 4
+    assert len(rows(settings.database_path, "agent_actions")) == 6
     other = TestClient(client.app)
     other.get("/chat")
     assert other.get("/chat/state").json()["messages"] == []
     assert other.get(messages[0]["photo_url"]).status_code == 404
+    assert client.post("/chat/new").status_code == 200
+    assert client.get("/chat/state").json()["messages"] == []
+    assert len(rows(settings.database_path, "messages")) > 0  # Restart keeps the old history in SQLite.
+
+
+def test_new_issue_photo_does_not_inherit_old_case_description(tmp_path, monkeypatch):
+    client, settings = setup(tmp_path)
+    post(client, "SM1", "Kitchen sink leak", image=True)
+    post(client, "SM2", "How urgent is that sink leak?")
+    seen = []
+    def cleaner_triage(settings, message, image, prior):
+        seen.append((message, prior))
+        return {"trade": "cleaner", "issue": "Dirty bathroom", "severity": "medium", "visible_evidence": "Towels and muddy floor", "uncertainty": "Check on site."}
+    monkeypatch.setattr("turnpilot.workflow.triage", cleaner_triage)
+    post(client, "SM3", "new issue", image=True)
+    assert seen == [("new issue", None)]
+    cases = rows(settings.database_path, "cases")
+    assert len(cases) == 2 and cases[-1]["trade"] == "cleaner"
 
 
 def test_browser_chat_rejects_fake_images_and_demo_requires_password(tmp_path, monkeypatch):
@@ -172,10 +209,62 @@ def test_browser_chat_rejects_fake_images_and_demo_requires_password(tmp_path, m
     photo = Path("demo/scenarios/damaged-outlet.png").read_bytes()
     response = demo.post("/chat/message", auth=("demo", "demo-password"), files={"photo": ("outlet.png", photo, "image/png")})
     assert response.status_code == 200
-    assert "simulated Electrician Agent" in response.json()["reply"]
+    assert "Want me to ask our demo electrician" in response.json()["reply"]
+    response = demo.post("/chat/message", auth=("demo", "demo-password"), data={"body": "yes"})
+    assert response.status_code == 200
     response = demo.post("/chat/message", auth=("demo", "demo-password"), data={"body": "How urgent is it?"})
     assert response.status_code == 200
     assert calls == [("inspection_triage", True), ("specialist_draft", False), ("case_followup", False)]
+
+
+@pytest.mark.parametrize("image_name,trade,issue", [
+    ("leaking-sink.png", "plumber", "a leaking kitchen pipe"),
+    ("turnover-cleaning.png", "cleaner", "a bathroom needing a turnover clean"),
+])
+def test_gemini_conversation_waits_for_photo_then_stages_handoff(tmp_path, monkeypatch, image_name, trade, issue):
+    client, settings = setup(tmp_path, "demo", "gemini")
+    calls = []
+    def fake_model(settings, instructions, text, image=None, *, schema, name):
+        calls.append((name, bool(image)))
+        if name == "bob_chat":
+            return {"answer": "I can help with that. Please send a clear photo when you can."}
+        if name == "inspection_triage":
+            return {"trade": trade, "issue": issue, "severity": "medium", "visible_evidence": issue, "uncertainty": "An on-site check is needed."}
+        if name == "specialist_draft":
+            return {"diagnosis": f"Possible {issue}", "repair_plan": "Inspect the area and prepare the right repair or cleaning supplies.", "estimate": "$100-$300", "slot": "Tomorrow"}
+        raise AssertionError(name)
+    monkeypatch.setattr("turnpilot.agents._model_json", fake_model)
+    auth = ("demo", "demo-password")
+    client.get("/chat", auth=auth)
+    greeting = client.post("/chat/message", auth=auth, data={"body": "Property: Unit 9\nCan you help?"})
+    assert greeting.status_code == 200
+    assert "Please send a clear photo" in greeting.json()["reply"]
+    assert not rows(settings.database_path, "cases")
+    assert not rows(settings.database_path, "tasks")
+    photo = Path("demo/scenarios", image_name).read_bytes()
+    response = client.post("/chat/message", auth=auth, files={"photo": (image_name, photo, "image/png")})
+    assert response.status_code == 200
+    messages = rows(settings.database_path, "messages")
+    assert len(messages[-2]["body"]) < 140
+    assert f"Want me to ask our demo {trade}" in messages[-1]["body"]
+    assert not rows(settings.database_path, "tasks")
+    response = client.post("/chat/message", auth=auth, data={"body": "yes"})
+    assert response.status_code == 200
+    messages = rows(settings.database_path, "messages")
+    assert "talking to our demo" in messages[-3]["body"]
+    assert "Just heard back" in messages[-2]["body"]
+    assert ("17:00" if trade == "plumber" else "10:00") in messages[-2]["body"]
+    assert "about 2 hours" in messages[-2]["body"]
+    assert "Would " in messages[-1]["body"]
+    if trade == "cleaner":
+        assert "$100/hour" in messages[-2]["body"]
+    else:
+        assert "owner would cover" in messages[-1]["body"]
+    response = client.post("/chat/message", auth=auth, data={"body": "yes"})
+    assert "Of course, Michel" in response.json()["reply"]
+    case = rows(settings.database_path, "cases")[0]
+    assert case["trade"] == trade and case["property_context"] == "Unit 9"
+    assert calls == [("bob_chat", False), ("inspection_triage", True), ("specialist_draft", False)]
 
 
 def test_live_browser_preview_never_sends_twilio(tmp_path, monkeypatch):
@@ -185,6 +274,7 @@ def test_live_browser_preview_never_sends_twilio(tmp_path, monkeypatch):
     def unexpected_twilio(*args):
         raise AssertionError("Browser preview must not call Twilio")
     monkeypatch.setattr("turnpilot.server.Client", unexpected_twilio)
+    monkeypatch.setattr("turnpilot.server.bob_chat", lambda *args: "Hi, please send a photo.")
     assert client.get("/chat", auth=("demo", "demo-password")).status_code == 200
     response = client.post("/chat/message", auth=("demo", "demo-password"), data={"body": "Hello"})
     assert response.status_code == 200
@@ -350,10 +440,9 @@ def test_gemini_retries_when_thinking_uses_output_limit(monkeypatch, tmp_path):
 def test_mock_sparking_outlet_is_urgent(tmp_path):
     client, settings = setup(tmp_path)
     post(client, "SM6", "The outlet sparks and there is an exposed wire")
-    case = rows(settings.database_path, "cases")[0]
-    assert case["trade"] == "electrician"
-    assert case["severity"] == "high"
-    assert "keep clear" in rows(settings.database_path, "messages")[-1]["body"]
+    assert not rows(settings.database_path, "cases")
+    assert "keep clear" in rows(settings.database_path, "messages")[-1]["body"].lower()
+    assert "qualified electrician" in rows(settings.database_path, "messages")[-1]["body"]
 
 
 def test_captioned_mock_photo_and_later_property_context(tmp_path):
@@ -376,7 +465,7 @@ def test_workflow_has_no_whatsapp_or_database_dependency(tmp_path):
     assert result.dispatch["route"] == "plumber_agent"
     assert result.specialist["simulated"] is True
     assert actions == [("inspection_triage", "classified"), ("dispatcher", "routed"), ("plumber_agent", "draft_plan")]
-    assert "No vendor has been contacted" in result.reply
+    assert "No real contractor has been contacted" in result.reply
 
 
 def test_long_model_draft_keeps_simulation_disclosure(monkeypatch, tmp_path):
@@ -392,8 +481,8 @@ def test_long_model_draft_keeps_simulation_disclosure(monkeypatch, tmp_path):
     })
     reply = inspect(settings, "sink leak", None).reply
     assert len(reply) <= 1550
-    assert "Connected to simulated Plumber Agent" in reply
-    assert "No vendor has been contacted or booked" in reply
+    assert "simulated Plumber Agent" in reply
+    assert "No real contractor has been contacted or booked" in reply
 
 
 def test_workflow_preserves_completed_steps_on_specialist_failure(monkeypatch, tmp_path):
@@ -431,6 +520,7 @@ def test_mock_electrician_followup_uses_electrical_advice(tmp_path):
     reply = rows(settings.database_path, "messages")[-1]["body"]
     assert "qualified electrician" in reply
     assert "shut off the water" not in reply
+    assert not rows(settings.database_path, "cases")
 
 
 def test_general_maintenance_route_has_stable_agent_name():

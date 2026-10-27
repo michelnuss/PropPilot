@@ -21,21 +21,37 @@
     .side-intro { padding:17px 19px 13px; border-bottom:1px solid var(--line); }
     .side-intro h1 { margin:0 0 5px; font-size:21px; letter-spacing:-.03em; }
     .side-intro p { margin:0; font-size:14px; line-height:1.45; color:var(--muted); }
-    .chat-choice { display:flex; width:100%; align-items:center; gap:12px; text-align:left; border:0; border-bottom:1px solid var(--line); padding:13px 17px; background:#f6f7f7; }
+    .chat-list { flex:1; min-height:0; overflow:auto; }
+    .chat-choice { display:flex; width:100%; align-items:center; gap:12px; text-align:left; border:0; border-bottom:1px solid var(--line); padding:13px 17px; background:var(--white); color:var(--ink); }
+    .chat-choice:hover,.chat-choice.active { background:#f1f5f4; }
     .chat-choice img,.profile img { width:49px; height:49px; border-radius:50%; object-fit:cover; object-position:center 26%; background:#e6ede7; }
     .chat-choice strong,.chat-choice small { display:block; }
     .chat-choice strong { font-size:16px; }
-    .chat-choice small { margin-top:4px; font-size:12px; color:var(--muted); }
+    .chat-choice small { margin-top:4px; font-size:13px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .chat-choice .chat-text { flex:1; min-width:0; }
+    .chat-choice .chat-name { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+    .chat-choice time { color:var(--muted); font-size:12px; white-space:nowrap; }
+    .sample-avatar,.header-initial { display:grid; place-items:center; flex:none; width:49px; height:49px; border-radius:50%; color:#174532; background:#d5ebdb; font-size:18px; font-weight:700; }
+    .sample-avatar.blue { background:#d9e9f8; color:#285674; }
+    .sample-avatar.peach { background:#f6e3d9; color:#78513d; }
+    .sample-avatar.violet { background:#e7def5; color:#57467d; }
+    .sample-label { margin:15px 18px 7px; color:var(--muted); font-size:12px; font-weight:700; }
     .side-bottom { margin-top:auto; padding:17px 19px; color:var(--muted); font-size:13px; line-height:1.55; border-top:1px solid var(--line); }
     .side-bottom a { color:var(--dark); font-weight:600; }
-    .conversation { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--wall); }
+    .conversation { position:relative; display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--wall); }
     .header { display:flex; align-items:center; gap:12px; min-height:66px; padding:8px 19px; background:var(--panel); border-bottom:1px solid #d9dfe2; }
     .profile { display:flex; align-items:center; gap:11px; min-width:0; }
     .profile img { width:44px; height:44px; }
+    .header-initial { display:none; width:44px; height:44px; font-size:17px; }
+    .sample-view .profile img { display:none; }
+    .sample-view .header-initial { display:grid; }
     .profile strong,.profile small { display:block; }
     .profile strong { font-size:16px; }
     .profile small { margin-top:2px; color:var(--muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .header-mark { margin-left:auto; color:var(--dark); font-size:12px; font-weight:700; border:1px solid #a5cec3; border-radius:99px; padding:6px 9px; white-space:nowrap; }
+    .header-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+    .header-mark { color:var(--dark); font-size:12px; font-weight:700; border:1px solid #a5cec3; border-radius:99px; padding:6px 9px; white-space:nowrap; }
+    .restart { width:34px; height:34px; border:1px solid #b6c8c5; border-radius:50%; background:white; color:var(--dark); font-size:20px; line-height:1; }
+    .restart:hover { background:#e5f4ef; }
     .notice { padding:8px 18px; text-align:center; background:#fff5d7; color:#5b5135; font-size:12px; line-height:1.4; }
     .wall { flex:1; min-height:0; overflow:auto; padding:25px clamp(16px,5vw,66px) 28px; background-color:var(--wall); background-image:radial-gradient(#8c9b8a19 1px, transparent 1px); background-size:25px 25px; }
     .date { width:max-content; max-width:100%; margin:0 auto 24px; padding:7px 13px; color:#53656e; background:#fffdf9e6; box-shadow:0 1px 2px #0001; border-radius:8px; font-size:12px; }
@@ -59,6 +75,11 @@
     .attachment img { width:52px; height:52px; object-fit:cover; border-radius:6px; }
     .attachment span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
     .attachment button { border:0; background:transparent; color:#5d717b; font-size:24px; }
+    .attach-menu { display:none; position:absolute; left:16px; bottom:91px; z-index:4; width:225px; padding:8px; border:1px solid #d5dedb; border-radius:13px; background:white; box-shadow:0 8px 24px #0002; }
+    .attach-menu.active { display:grid; }
+    .attach-menu button { border:0; border-radius:8px; padding:10px 11px; background:white; color:var(--ink); text-align:left; font-size:14px; }
+    .attach-menu button:hover { background:#eef7f3; }
+    .attach-menu small { padding:6px 11px 3px; color:var(--muted); font-size:12px; }
     .composer { display:flex; align-items:flex-end; gap:10px; padding:11px 16px; background:var(--panel); }
     .attach-button,.send-button { display:grid; place-items:center; flex:none; width:42px; height:42px; border:0; border-radius:50%; background:transparent; color:#54656f; font-size:24px; }
     .attach-button:hover { background:#e2e6e9; }
@@ -70,6 +91,8 @@
     .error { display:none; padding:8px 17px; background:#fee6e6; color:#8c2424; font-size:12px; }
     .error.active { display:block; }
     .footer { background:var(--panel); color:#52636d; text-align:center; font-size:12px; padding:0 12px 9px; }
+    .sample-view .attachment,.sample-view .attach-menu,.sample-view .composer,.sample-view .typing,.sample-view .error { display:none !important; }
+    .sample-view .footer { padding:13px; }
     @media (max-width:800px) { .shell { grid-template-columns:240px minmax(0,1fr); } }
     @media (max-width:620px) { body { background:var(--wall); } body::before,.sidebar { display:none; } .shell { display:block; height:100dvh; min-height:0; margin:0; box-shadow:none; } .conversation { height:100%; } .header { min-height:61px; padding:7px 12px; } .wall { padding:18px 13px; } .bubble { max-width:88%; } .composer { padding:8px; gap:5px; } }
   </style>
@@ -78,19 +101,27 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="side-top"><strong>TurnPilot AI</strong><span>Founder preview</span></div>
-      <div class="side-intro"><h1>Chats</h1><p>Try a property issue with Bob. This preview uses the same agent workflow as the WhatsApp integration.</p></div>
-      <div class="chat-choice"><img src="/chat/bob.png" alt="Bob's cartoon construction worker portrait"><span><strong>Bob</strong><small>Property care · inspection agent</small></span></div>
-      <div class="side-bottom">This is a browser demo. It does not send a WhatsApp message or contact a contractor.<br><br><a href="/observer" target="_blank" rel="noopener">Watch agent handoffs</a></div>
+      <div class="side-intro"><h1>Chats</h1><p>Bob is the live AI chat. The other threads are scripted previews for the demo.</p></div>
+      <div class="chat-list">
+        <button type="button" class="chat-choice active" data-demo-chat="bob"><img src="/chat/bob.png" alt="Bob's cartoon construction worker portrait"><span class="chat-text"><span class="chat-name"><strong>Bob</strong><time>Now</time></span><small>Property care · ask me anything</small></span></button>
+        <div class="sample-label">Sample conversations</div>
+        <button type="button" class="chat-choice" data-demo-chat="sofia"><span class="sample-avatar">S</span><span class="chat-text"><span class="chat-name"><strong>Sofia · Owner</strong><time>9:42 AM</time></span><small>Thanks for the update on Unit 12.</small></span></button>
+        <button type="button" class="chat-choice" data-demo-chat="maya"><span class="sample-avatar peach">M</span><span class="chat-text"><span class="chat-name"><strong>Maya · Turnover</strong><time>Yesterday</time></span><small>Fresh towels are in the closet.</small></span></button>
+        <button type="button" class="chat-choice" data-demo-chat="alex"><span class="sample-avatar blue">A</span><span class="chat-text"><span class="chat-name"><strong>Alex · Guest</strong><time>Yesterday</time></span><small>The keypad worked. Thank you!</small></span></button>
+        <button type="button" class="chat-choice" data-demo-chat="harbor"><span class="sample-avatar violet">H</span><span class="chat-text"><span class="chat-name"><strong>Harbor View team</strong><time>Mon</time></span><small>Check-in guide looks good.</small></span></button>
+      </div>
+      <div class="side-bottom">Browser demo · sample chats are read-only.<br><br><a href="/observer" target="_blank" rel="noopener">Watch agent handoffs</a></div>
     </aside>
     <main class="conversation">
-      <header class="header"><div class="profile"><img src="/chat/bob.png" alt="Bob"><div><strong>Bob</strong><small id="connection">Connecting…</small></div></div><span class="header-mark">Browser demo</span></header>
-      <div class="notice">Bob's specialist, estimates, and slots are simulated. No contractor is contacted or booked.</div>
+      <header class="header"><div class="profile"><img src="/chat/bob.png" alt="Bob"><span id="header-initial" class="header-initial"></span><div><strong id="chat-title">Bob</strong><small id="connection">Connecting…</small></div></div><div class="header-actions"><span class="header-mark">Browser demo</span><button type="button" id="restart" class="restart" aria-label="Restart conversation" title="Restart conversation">↻</button></div></header>
+      <div id="notice" class="notice">Demo only · Bob's times and prices are fictional. Nothing is booked.</div>
       <section id="wall" class="wall" aria-label="Conversation with Bob" aria-live="polite"><div class="date">Today</div><div class="welcome"><strong>Hi, I'm Bob 👋</strong><p>Tell me what's happening at the property, or send a clear photo. I can help assess it and prepare a draft repair request.</p><div class="samples" aria-label="Example inspection photos"><button type="button" data-sample="leaking-sink.png">💧 Leaking sink</button><button type="button" data-sample="damaged-outlet.png">⚡ Damaged outlet</button><button type="button" data-sample="broken-window.png">🪟 Broken window</button><button type="button" data-sample="turnover-cleaning.png">🧽 Cleaning</button></div></div></section>
-      <div id="typing" class="typing" role="status">Bob is checking the case…</div>
+      <div id="typing" class="typing" role="status">Bob is typing…</div>
       <div id="error" class="error" role="alert"></div>
+      <div id="attach-menu" class="attach-menu"><button type="button" id="upload-photo">Upload a photo</button><small>Try a staged photo</small><button type="button" data-menu-sample="leaking-sink.png">💧 Leaking sink</button><button type="button" data-menu-sample="turnover-cleaning.png">🧽 Messy bathroom</button><button type="button" data-menu-sample="damaged-outlet.png">⚡ Damaged outlet</button><button type="button" data-menu-sample="broken-window.png">🪟 Broken window</button></div>
       <div id="attachment" class="attachment"><img id="preview" src="/chat/bob.png" alt="Photo to send"><span id="filename"></span><button type="button" id="remove" aria-label="Remove photo">×</button></div>
       <form id="form" class="composer"><button type="button" id="attach" class="attach-button" title="Attach photo" aria-label="Attach photo">＋</button><input id="file" type="file" accept="image/jpeg,image/png,image/webp" hidden><textarea id="body" rows="1" placeholder="Type a message to Bob" aria-label="Message to Bob"></textarea><button id="send" class="send-button" type="submit" title="Send" aria-label="Send">➤</button></form>
-      <div class="footer">Browser preview · replies are saved here and use the configured agent mode</div>
+      <div id="footer" class="footer">Browser preview · replies are saved here and use the configured agent mode</div>
     </main>
   </div>
   <script>
@@ -101,9 +132,32 @@
     const attachment = document.getElementById('attachment');
     const typing = document.getElementById('typing');
     const error = document.getElementById('error');
+    const attachMenu = document.getElementById('attach-menu');
     let selectedFile = null;
     let previewURL = null;
     let busy = false;
+    let selectedChat = 'bob';
+    let cachedMessages = [];
+    let connectionLabel = 'Connecting…';
+    let activeCaseId = null;
+    const stamp = minutesAgo => new Date(Date.now() - minutesAgo * 60000).toISOString().slice(0,19).replace('T',' ');
+    const sampleChats = {
+      sofia: {name:'Sofia · Owner', initial:'S', color:'#d5ebdb', messages:[
+        {direction:'in',body:'Can you keep an eye on Unit 12 before tonight’s check-in?',created_at:stamp(56)},
+        {direction:'out',body:'Yes. I’ll send you the inspection notes as soon as they’re ready.',created_at:stamp(53)},
+        {direction:'in',body:'Thanks for the update on Unit 12.',created_at:stamp(48)}]},
+      maya: {name:'Maya · Turnover', initial:'M', color:'#f6e3d9', messages:[
+        {direction:'out',body:'Is the guest suite ready for the next arrival?',created_at:stamp(1510)},
+        {direction:'in',body:'All set. Fresh towels are in the closet.',created_at:stamp(1502)},
+        {direction:'out',body:'Perfect, thank you!',created_at:stamp(1498)}]},
+      alex: {name:'Alex · Guest', initial:'A', color:'#d9e9f8', messages:[
+        {direction:'in',body:'I could not find the front door code.',created_at:stamp(1630)},
+        {direction:'out',body:'It’s in your check-in message. Let me know if the keypad gives you trouble.',created_at:stamp(1628)},
+        {direction:'in',body:'The keypad worked. Thank you!',created_at:stamp(1624)}]},
+      harbor: {name:'Harbor View team', initial:'H', color:'#e7def5', messages:[
+        {direction:'out',body:'I added the new arrival instructions for the weekend.',created_at:stamp(4320)},
+        {direction:'in',body:'Check-in guide looks good.',created_at:stamp(4315)}]}
+    };
 
     function showError(message) { error.textContent = message; error.classList.toggle('active', Boolean(message)); }
     function attachPhoto(file) {
@@ -154,23 +208,55 @@
       }
       wall.scrollTop = wall.scrollHeight;
     }
+    function showChat(id) {
+      selectedChat = id;
+      attachMenu.classList.remove('active');
+      document.querySelectorAll('[data-demo-chat]').forEach(button => button.classList.toggle('active', button.dataset.demoChat === id));
+      const isSample = id !== 'bob';
+      document.querySelector('.conversation').classList.toggle('sample-view', isSample);
+      document.getElementById('chat-title').textContent = isSample ? sampleChats[id].name : 'Bob';
+      document.getElementById('connection').textContent = isSample ? 'Scripted preview · read-only' : connectionLabel;
+      document.getElementById('header-initial').textContent = isSample ? sampleChats[id].initial : '';
+      document.getElementById('header-initial').style.background = isSample ? sampleChats[id].color : '';
+      document.getElementById('notice').textContent = isSample ? 'This is a scripted sample conversation. No messages are sent from this thread.' : "Demo only · Bob's times and prices are fictional. Nothing is booked.";
+      document.getElementById('footer').textContent = isSample ? 'Read-only sample · switch to Bob to use the live AI chat' : 'Browser preview · replies are saved here and use the configured agent mode';
+      wall.setAttribute('aria-label', isSample ? 'Sample conversation with ' + sampleChats[id].name : 'Conversation with Bob');
+      render(isSample ? sampleChats[id].messages : cachedMessages);
+    }
     async function refresh() {
       const response = await fetch('/chat/state', {cache:'no-store'});
       if (!response.ok) throw new Error('The chat session expired. Reload this page.');
       const state = await response.json();
-      document.getElementById('connection').textContent = state.mode === 'mock' ? 'Mock answers · no image analysis' : (state.provider === 'gemini' ? 'Gemini-powered property care' : 'AI-powered property care');
-      render(state.messages);
+      activeCaseId = state.active_case;
+      connectionLabel = state.mode === 'mock' ? 'Mock answers · no image analysis' : (state.provider === 'gemini' ? 'Gemini-powered property care' : 'AI-powered property care');
+      if (state.messages.length >= cachedMessages.length) cachedMessages = state.messages;
+      if (selectedChat === 'bob') { document.getElementById('connection').textContent = connectionLabel; render(cachedMessages); }
     }
     async function selectSample(name) {
       try {
+        attachMenu.classList.remove('active');
         showError('');
         const response = await fetch('/chat/sample/' + encodeURIComponent(name));
         if (!response.ok) throw new Error('Could not load the sample photo.');
         const blob = await response.blob();
         attachPhoto(new File([blob], name, {type:'image/png'}));
+        if (activeCaseId && !body.value.trim()) body.value = 'new issue';
       } catch (exc) { showError(exc.message); }
     }
-    document.getElementById('attach').addEventListener('click', () => fileInput.click());
+    document.getElementById('attach').addEventListener('click', () => attachMenu.classList.toggle('active'));
+    document.getElementById('upload-photo').addEventListener('click', () => { attachMenu.classList.remove('active'); fileInput.click(); });
+    document.querySelectorAll('[data-menu-sample]').forEach(button => button.addEventListener('click', () => selectSample(button.dataset.menuSample)));
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') attachMenu.classList.remove('active'); });
+    document.getElementById('restart').addEventListener('click', async () => {
+      if (busy) return;
+      try {
+        const response = await fetch('/chat/new', {method:'POST'});
+        if (!response.ok) throw new Error('Could not start a fresh chat.');
+        cachedMessages = []; activeCaseId = null; body.value = ''; clearPhoto(); showError('');
+        showChat('bob'); await refresh();
+      } catch (exc) { showError(exc.message); }
+    });
+    document.querySelectorAll('[data-demo-chat]').forEach(button => button.addEventListener('click', () => showChat(button.dataset.demoChat)));
     fileInput.addEventListener('change', () => attachPhoto(fileInput.files[0]));
     document.getElementById('remove').addEventListener('click', clearPhoto);
     body.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); } });
@@ -179,13 +265,14 @@
       if (busy || (!body.value.trim() && !selectedFile)) return;
       busy = true; document.getElementById('send').disabled = true; typing.classList.add('active'); showError('');
       const data = new FormData(); data.set('body', body.value.trim()); if (selectedFile) data.set('photo', selectedFile);
+      const poll = setInterval(() => { if (selectedChat === 'bob') refresh().catch(() => {}); }, 700);
       try {
         const response = await fetch('/chat/message', {method:'POST', body:data});
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || 'Bob could not process that message.');
         body.value = ''; clearPhoto(); await refresh();
       } catch (exc) { showError(exc.message || 'Could not connect to Bob. Try again.'); }
-      finally { busy = false; document.getElementById('send').disabled = false; typing.classList.remove('active'); body.focus(); }
+      finally { clearInterval(poll); busy = false; document.getElementById('send').disabled = false; typing.classList.remove('active'); if (selectedChat === 'bob') body.focus(); }
     });
     refresh().catch(exc => showError(exc.message));
   </script>

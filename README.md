@@ -2,14 +2,14 @@
 
 **Two-founder integration:** see [docs/FOUNDER_HANDOFF.md](docs/FOUNDER_HANDOFF.md) for ownership, agent function contracts, and merge steps.
 
-A WhatsApp homeowner chat with a WhatsApp-style browser preview and a small internal observer page for the founders. **Bob**, the inspection agent, receives a photo or text report and runs **inspection/triage → dispatcher → simulated trade specialist**. Bob answers follow-up questions, asks for missing details, and can cancel a draft case. No real contractor is contacted, no booking is made, no payment is taken, and estimates and slots are simulated.
+A WhatsApp homeowner chat with a WhatsApp-style browser preview and a small internal observer page for the founders. **Bob** answers text messages through Gemini and asks for a photo. After a photo, he triages the visible issue in two short messages and asks whether to check with a simulated specialist. Only after a **yes** does the dispatcher route it and the specialist prepare a draft plan. Bob then sends short updates with a simulated time, remembers the case for follow-up questions, and can cancel the draft. No real contractor is contacted, no booking is made, no payment is taken, and estimates and slots are simulated.
 
 ## What is real and what is simulated
 
 - **Live mode:** Twilio WhatsApp Sandbox receives actual messages and photos; the server downloads the photo, sends its bytes to a vision-capable Gemini model (or OpenAI if selected), persists the case in SQLite, and replies through Twilio.
 - **Mock mode:** runs locally without credentials. The `demo/broken_sink.png` fixture follows a deterministic plumber path. The reply says `[MOCK MODE]`, and outbound messages are saved to SQLite but **not sent to WhatsApp**. Mock mode does not analyze pixels.
 - **Demo mode:** set `APP_MODE=demo`, `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, and `OBSERVER_PASSWORD`. Open `/chat` for a WhatsApp-style browser preview that uses the real Gemini vision and follow-up path without Twilio credentials. Replies and uploaded images stay in SQLite/local files; no WhatsApp message is sent.
-- Both modes run separate triage, dispatcher, and specialist steps, recorded in `agent_actions`.
+- A photo runs triage only. An affirmative reply runs the separate dispatcher and specialist steps, recorded in `agent_actions`. Text before a photo gets a conversational reply and does not dispatch a specialist.
 - `turnpilot/workflow.py` is the transport-independent Founder 2 entry point. Its `inspect(...)` function returns the three decisions and a reply; the optional `on_action` callback records each completed step. Gabi's WhatsApp adapter can call this without importing Twilio code.
 - `turnpilot/static/bob.png` is Bob's cartoon avatar on the internal observer page. `assets/bob-whatsapp-profile.png` is a square, opaque portrait prepared for a future registered WhatsApp sender. Twilio's shared Sandbox number keeps the Twilio logo; its face cannot be replaced for the test. After your own sender is approved, Twilio allows a profile photo through **Messaging → Senders → WhatsApp senders**. See [Twilio's profile instructions](https://www.twilio.com/docs/whatsapp/editing-your-whatsapp-business-profile). The 2-minute screen-share script is in [docs/TWO_MINUTE_PITCH.md](docs/TWO_MINUTE_PITCH.md).
 - `demo/scenarios/` contains four AI-generated inspection photos for plumber, electrician, general maintenance, and cleaner routing. Bob's live Gemini triage was checked with each photo; see the scenario README for expected results and safety notes.
@@ -37,12 +37,12 @@ curl -X POST http://127.0.0.1:8000/whatsapp \
   -d 'MediaContentType0=image/png'
 ```
 
-Follow up with another `MessageSid`:
+Give Bob permission to prepare the simulated specialist draft with another `MessageSid`:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/whatsapp \
   -d 'MessageSid=demo-live-2' --data-urlencode 'From=whatsapp:+15551234567' \
-  -d 'Body=What might it cost?' -d 'NumMedia=0'
+  -d 'Body=yes' -d 'NumMedia=0'
 ```
 
 The webhook returns quick TwiML acknowledgments. In mock mode, inspect the saved, unsent responses with:
@@ -60,8 +60,8 @@ Open `http://127.0.0.1:8000/observer` to watch Bob, the dispatcher, and speciali
 
 1. In your private `.env`, set `APP_MODE=demo`, `AI_PROVIDER=gemini`, a valid `GEMINI_API_KEY`, and `OBSERVER_PASSWORD` to a password you choose. Twilio credentials are not needed for this mode.
 2. Run `uvicorn turnpilot.server:app --host 127.0.0.1 --port 8000` and open `http://127.0.0.1:8000/chat`. Local loopback access opens without a sign-in prompt. Keep `OBSERVER_PASSWORD` set for any access through a public tunnel, which uses username `demo`.
-3. Click **Leaking sink** to attach the staged photo, then press send. Bob's response comes from the live Gemini agent workflow and is saved to SQLite. Ask “How urgent is it?” in the same chat. Open `/observer` in another tab to show the triage → dispatcher → plumber handoffs.
-4. Use the other sample buttons to attach outlet, window, or cleaning photos. Add `new issue` to the caption when you want a separate case. The uploaded photo remains visible after a reload in the same browser session.
+3. Start with a text like “Hey Bob, can you help?” Bob answers through Gemini. Click **Leaking sink** to attach the staged photo, then press send. Bob describes the leak in short bubbles and asks if you want him to ask the **demo plumber** about a visit. Reply `yes`. He says he is talking to the demo plumber, then returns with **tomorrow at 17:00**, about **two hours** of repair time, and a rough demo cost. He says the owner normally covers plumbing repairs caused by wear and tear, then asks whether 17:00 works. Reply `yes` again for his closing message. Ask “How urgent is it?” in the same chat. Open `/observer` in another tab to show triage → dispatcher → plumber handoffs.
+4. Say “Yes actually, the house is a mess,” then use the **+** button to attach the **Messy bathroom** sample photo. Bob asks before talking to the **demo cleaner**; reply `yes` to see a **tomorrow at 10:00** demo cleaning proposal at **$100/hour** for about two hours. The + menu keeps all four staged photos available even after the first exchange. A new photo after a completed draft starts a separate case unless its caption says `update` or `same issue`. The uploaded photo stays visible after a reload. The sidebar's other conversations are scripted, read-only previews; only Bob sends Gemini replies. The **↻** button beside “Browser demo” starts a fresh chat without deleting saved history.
 
 The preview borrows WhatsApp's familiar chat layout and colors but is labeled **Browser demo**. It does not send a WhatsApp message. `APP_MODE=mock` can also open `/chat`, but mock answers do not inspect image pixels. In `APP_MODE=live`, the browser preview remains available with the same password, alongside the Twilio webhook. Local password-free demo access requires a loopback URL and direct loopback connection; forwarded/tunnel requests require `OBSERVER_PASSWORD`. Do not put API keys in browser code or commit `.env`.
 
@@ -74,7 +74,7 @@ The preview borrows WhatsApp's familiar chat layout and colors but is labeled **
 5. Start the server: `uvicorn turnpilot.server:app --host 0.0.0.0 --port 8000`.
 6. Start a public test tunnel, for example `ngrok http 8000`. Set `TWILIO_WEBHOOK_URL` in `.env` to the tunnel's exact HTTPS URL plus `/whatsapp`, such as `https://example.ngrok-free.app/whatsapp`. Restart the server after editing `.env`.
 7. In Twilio Sandbox settings, set **When a message comes in** to that same URL, with method **POST**, and save it. The exact URL is required for Twilio signature validation. If the tunnel URL changes, update both places and restart.
-8. Send a text such as `Property: Unit 2. The kitchen sink pipe is leaking`, or send `demo/broken_sink.png` from the joined WhatsApp account. Wait for the acknowledgement and then Bob's detailed response. Ask `How urgent is it?`, `What might it cost?`, `Who pays?`, and `What happens next?` in the same chat. Reply `cancel` to close the draft case. If your first report is vague, Bob asks where the issue is and requests a clear photo.
+8. Send a text such as `Property: Unit 2. The kitchen sink pipe is leaking`; Bob asks for a photo without dispatching anyone. Then send `demo/broken_sink.png` from the joined WhatsApp account. Bob will describe the photo and ask whether to check with the simulated Plumber Agent. Reply `yes` to trigger dispatch, draft plan, and a simulated time. Ask `How urgent is it?`, `What might it cost?`, `Who pays?`, and `What happens next?` in the same chat. Reply `cancel` to close the draft case. A new issue can start with `new issue` in the photo caption.
 
 The tunnel exposes your local server temporarily; use it only for the test. The Twilio request signature is checked in live mode. The app requires only one image per message, up to 8 MB, in JPEG, PNG, or WebP. It stores downloaded photos under `data/photos/` and SQLite data under `data/turnpilot.db`; `data/` is ignored by Git.
 

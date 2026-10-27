@@ -111,6 +111,27 @@ class Store:
                 (case_id, triage["trade"], "draft_simulated", json.dumps(plan)),
             )
 
+    def update_triage(self, case_id: int, triage: dict):
+        with self.connect() as db:
+            db.execute(
+                "UPDATE cases SET issue=?,trade=?,severity=?,plan_json='{}',updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (triage["issue"], triage["trade"], triage["severity"], case_id),
+            )
+            db.execute("UPDATE tasks SET status='superseded' WHERE case_id=? AND status='draft_simulated'", (case_id,))
+
+    def pending_handoff(self, case_id: int) -> bool:
+        with self.connect() as db:
+            row = db.execute("SELECT trade,plan_json,status FROM cases WHERE id=?", (case_id,)).fetchone()
+        return bool(row and row["trade"] and row["plan_json"] == "{}" and row["status"] == "open")
+
+    def last_triage(self, case_id: int) -> dict | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT detail_json FROM agent_actions WHERE case_id=? AND agent='inspection_triage' "
+                "AND action='classified' ORDER BY id DESC LIMIT 1", (case_id,)
+            ).fetchone()
+        return json.loads(row["detail_json"]) if row else None
+
     def action(self, case_id: int | None, message_id: int | None, agent: str, action: str, detail: dict):
         with self.connect() as db:
             db.execute(
@@ -130,6 +151,22 @@ class Store:
             return [dict(row) for row in db.execute(
                 "SELECT direction,body FROM messages WHERE case_id=? ORDER BY id DESC LIMIT 12", (case_id,)
             ).fetchall()][::-1]
+
+    def last_outbound(self, case_id: int) -> str | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT body FROM messages WHERE case_id=? AND direction='out' ORDER BY id DESC LIMIT 1",
+                (case_id,),
+            ).fetchone()
+        return row["body"] if row else None
+
+    def sender_history(self, sender: str, limit: int = 12):
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT id,direction,body FROM messages WHERE sender=? ORDER BY id DESC LIMIT ?",
+                (sender, limit),
+            ).fetchall()
+        return [dict(row) for row in reversed(rows)]
 
     def chat_messages(self, sender: str):
         with self.connect() as db:

@@ -31,6 +31,10 @@ FOLLOWUP_SCHEMA = {
     "type": "object", "properties": {"answer": {"type": "string"}},
     "required": ["answer"], "additionalProperties": False,
 }
+BOB_CHAT_SCHEMA = {
+    "type": "object", "properties": {"answer": {"type": "string"}},
+    "required": ["answer"], "additionalProperties": False,
+}
 HAZARD_PATTERN = re.compile(r"\b(?:sparks?|sparking|exposed wir(?:e|ing)|fire|smoke|severe flood(?:ing)?|water near (?:an? )?(?:outlet|electric(?:ity|al)?))\b", re.I)
 REAL_ACTION_PATTERN = re.compile(
     r"\b(?:i|we|our team)\s+(?:have\s+)?(?:booked|contacted|scheduled|called|sent)\b"
@@ -59,7 +63,7 @@ def _model_json(
             data = base64.b64encode(path.read_bytes()).decode("ascii")
             parts.append({"inline_data": {"mime_type": mime, "data": data}})
         thinking = {"thinkingConfig": {"thinkingLevel": "low"}} if settings.gemini_model.startswith(("gemini-3", "gemini-4")) else {}
-        with httpx.Client(timeout=35) as client:
+        with httpx.Client(timeout=60) as client:
             for output_limit in (4096, 8192):
                 response = client.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent",
@@ -163,11 +167,14 @@ def specialist(settings: Settings, triage_result: dict, property_context: str) -
         plans = {
             "plumber": ("Shut off the sink supply valves if safe, contain water, then inspect and replace the damaged pipe or fitting.", "$150–$350"),
             "electrician": ("Keep clear of the affected outlet or wiring, isolate power if safe, then have a qualified electrician inspect and repair it.", "$180–$450"),
-            "cleaner": ("Inspect the affected area, clean with suitable supplies, and document any damage requiring another trade.", "$80–$200"),
+            "cleaner": ("Clean the affected area and flag anything that needs a repair.", "$100/hour (demo rate)"),
             "general maintenance": ("Inspect on site, make the area safe, and identify the parts and trade needed for repair.", "$100–$300"),
         }
         plan, estimate = plans[trade]
-        return {"diagnosis": f"Possible {triage_result['issue'].lower()}; on-site verification needed.", "repair_plan": plan, "estimate": estimate, "slot": "Tomorrow, 10:00 AM–12:00 PM", "simulated": True}
+        slot = ("Tomorrow at 17:00 (simulated; not booked)" if trade == "plumber" else
+                "Tomorrow at 10:00 (simulated; not booked)" if trade == "cleaner" else
+                "Tomorrow, 10:00 AM–12:00 PM (simulated; not booked)")
+        return {"diagnosis": f"Possible {triage_result['issue'].lower()}; on-site verification needed.", "repair_plan": plan, "estimate": estimate, "slot": slot, "duration": "About 2 hours (demo estimate)" if trade in {"plumber", "cleaner"} else "To be assessed on site", "payer": "owner for normal wear and tear" if trade == "plumber" else "owner review", "simulated": True}
     result = _model_json(
         settings,
         f"You are a simulated {trade} specialist. Based only on triage, create a cautious mock diagnosis and repair plan. Do not claim you inspected on site. Provide a broad rough US-dollar estimate and one simulated time slot. No vendor has been contacted and no booking exists. Output keys: diagnosis, repair_plan, estimate, slot.",
@@ -178,7 +185,34 @@ def specialist(settings: Settings, triage_result: dict, property_context: str) -
     plan = {key: str(result.get(key, "Not available"))[:700] for key in ("diagnosis", "repair_plan", "estimate", "slot")}
     if any(REAL_ACTION_PATTERN.search(value) for value in plan.values()):
         raise ValueError("Specialist claimed real vendor action")
+    if trade in {"plumber", "cleaner"}:
+        plan["slot"] = ("Tomorrow at 17:00 (simulated; not booked)" if trade == "plumber"
+                        else "Tomorrow at 10:00 (simulated; not booked)")
+        plan["duration"] = "About 2 hours (demo estimate)"
+    if trade == "cleaner":
+        plan["estimate"] = "$100/hour (demo rate)"
+    plan["payer"] = "owner for normal wear and tear" if trade == "plumber" else "owner review"
     return plan | {"simulated": True}
+
+
+def bob_chat(settings: Settings, message: str, history: list[dict]) -> str:
+    """Answer before a photo exists; never start a specialist handoff here."""
+    if settings.mode == "mock":
+        recent_text = " ".join(item.get("body", "") for item in history[-6:] if item.get("direction") == "in")
+        if HAZARD_PATTERN.search(message + " " + recent_text):
+            return "[MOCK MODE] That may be urgent. Keep clear of the outlet or exposed wiring and seek a qualified electrician if there is sparking. Send a photo only if it is safe to do so; no specialist has been contacted."
+        return "[MOCK MODE] I'm Bob. Tell me what happened and send a clear photo when you can. I'll choose a specialist after I can see the issue."
+    result = _model_json(
+        settings,
+        "You are Bob, a warm, concise property-care assistant in a chat. Reply naturally to the person's latest message in one to three short sentences. Read the recent chat, ask at most one useful follow-up question, and invite a clear photo of the issue when needed. Do not claim to have seen a photo unless one is in the conversation, and do not triage, route to a specialist, contact a vendor, quote availability, or book anything before receiving a photo. All future vendor handoffs are simulated. If the person mentions exposed wiring, fire, or severe flooding, advise them to keep clear and seek urgent qualified help. Output one key: answer.",
+        f"Latest message: {message}\nRecent chat: {json.dumps(history[-10:])}",
+        schema=BOB_CHAT_SCHEMA,
+        name="bob_chat",
+    )
+    answer = str(result.get("answer", "Tell me a little more about the issue, and send a clear photo when you can."))[:600]
+    if REAL_ACTION_PATTERN.search(answer):
+        return "Send me a clear photo when you can. I haven't contacted or booked anyone."
+    return answer
 
 
 def follow_up(settings: Settings, question: str, case: dict, history: list[dict]) -> str:
@@ -194,7 +228,8 @@ def follow_up(settings: Settings, question: str, case: dict, history: list[dict]
             }[case["trade"]]
             answer = f"Current triage is {case['severity']} urgency. {advice}"
         elif re.search(r"who pays|tenant pay|renter pay|owner pay|landlord pay|responsib|charge", lower):
-            answer = "No payment is requested. The owner usually coordinates property repairs, but any renter responsibility depends on the lease, the cause, and local rules. I cannot determine that from a photo."
+            answer = ("For a normal plumbing repair, the owner would cover it. If it was caused by unusual damage, the owner should review the details before charging a guest."
+                      if case["trade"] == "plumber" else "I'd put this on the owner's side for now. If there was unusual guest-caused damage, the owner can review that separately.")
         elif re.search(r"cost|price|estimate|much", lower):
             answer = f"The rough demo-only estimate is {plan.get('estimate', 'unavailable')}. A real specialist would need to inspect it."
         elif re.search(r"next|status|book|when|slot", lower):
@@ -206,7 +241,7 @@ def follow_up(settings: Settings, question: str, case: dict, history: list[dict]
         return f"[MOCK MODE] {answer}"
     result = _model_json(
         settings,
-        "You are Bob, a friendly home-care coordinator answering a property issue follow-up in WhatsApp. Use the stored case and recent conversation. Keep it under 120 words. Ask one useful follow-up question when a material detail is missing. Be clear about uncertainty. All vendors, estimates, and slots are simulated; no outreach, booking, or payment happened. If asked who pays, say the owner usually coordinates property maintenance, but any renter responsibility depends on the lease, cause, and local rules; never assign liability from a photo. If asked about cancellation, explain that replying 'cancel' closes only the draft case. For electrical hazards, fire, or severe flooding, advise staying clear and seeking urgent qualified help. Output one key: answer.",
+        "You are Bob, a warm property-care assistant replying in WhatsApp. Use the stored case and chat history. Answer in one or two natural sentences, under 60 words. Avoid numbered plans, agent jargon, and repeated disclaimers. Times and prices are demo options only: never say a real vendor was contacted or booked. If asked who pays for an ordinary plumbing repair, say the owner would normally cover it; unusual guest-caused damage needs owner review, never a decision from a photo alone. If asked about cancellation, say replying 'cancel' closes the draft. For electrical hazards, fire, or severe flooding, advise staying clear and seeking urgent qualified help. Output one key: answer.",
         f"Question: {question}\nCase: {json.dumps(case)}\nRecent messages: {json.dumps(history)}",
         schema=FOLLOWUP_SCHEMA,
         name="case_followup",

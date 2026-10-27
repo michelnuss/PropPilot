@@ -16,6 +16,28 @@ class InspectionResult:
     reply: str
 
 
+def assess_photo(settings: Settings, message: str, image: tuple[Path, str],
+                 prior_case: dict | None = None,
+                 on_action: Callable[[str, str, dict], None] | None = None) -> dict:
+    """Inspect a photo before any simulated specialist handoff."""
+    result = triage(settings, message, image, prior_case)
+    if on_action:
+        on_action("inspection_triage", "classified", result)
+    return result
+
+
+def prepare_handoff(settings: Settings, triage_result: dict, property_context: str = "",
+                    on_action: Callable[[str, str, dict], None] | None = None) -> tuple[dict, dict]:
+    """Run dispatch and specialist only after the person agrees."""
+    route = dispatch(triage_result)
+    if on_action:
+        on_action("dispatcher", "routed", route)
+    plan = specialist(settings, triage_result, property_context)
+    if on_action:
+        on_action(route["route"], "draft_plan", plan)
+    return route, plan
+
+
 def inspect(
     settings: Settings,
     message: str,
@@ -28,23 +50,16 @@ def inspect(
     triage_result = triage(settings, message, image, prior_case)
     if on_action:
         on_action("inspection_triage", "classified", triage_result)
-    route = dispatch(triage_result)
-    if on_action:
-        on_action("dispatcher", "routed", route)
-    plan = specialist(settings, triage_result, property_context)
-    if on_action:
-        on_action(route["route"], "draft_plan", plan)
+    route, plan = prepare_handoff(settings, triage_result, property_context, on_action)
     intro = "[MOCK MODE] " if settings.mode == "mock" else ""
-    caution = (
-        " This could be a bigger problem. If there is exposed wiring, fire risk, or water near electricity, keep clear and seek urgent qualified help."
-        if triage_result["severity"] == "high"
-        else ""
-    )
+    caution = (" If water is near electricity, there is exposed wiring, or the area is unsafe, keep clear and seek urgent qualified help."
+               if triage_result["severity"] == "high" else "")
     reply = (
-        f"{intro}Hi, I'm Bob. From your report: {triage_result['issue'][:180]}. {triage_result['uncertainty'][:140]}\n"
-        f"Connected to simulated {triage_result['trade'].title()} Agent. Draft repair request prepared. I'll keep track of it here.\n"
-        f"Possible diagnosis: {plan['diagnosis'][:180]}\nPlan: {plan['repair_plan'][:240]}\n"
-        f"Rough demo-only estimate: {plan['estimate'][:120]}. Simulated slot: {plan['slot'][:80]}.\n"
-        f"No vendor has been contacted or booked, and no payment is requested.{caution} Ask me a question or reply 'cancel' to close this draft."
+        f"{intro}I'm back. I checked with our simulated {triage_result['trade'].title()} Agent about what looks like {triage_result['issue'][:160].lower()}. "
+        f"{triage_result['uncertainty'][:120]}\n\n"
+        f"The draft plan: {plan['repair_plan'][:220]} "
+        f"A simulated visit could be {plan['slot'][:80].lower()}. Rough demo-only estimate: {plan['estimate'][:90]}.\n\n"
+        f"No real contractor has been contacted or booked. Nothing is confirmed and no payment is requested.{caution} "
+        f"Ask me anything, or say 'cancel' to close the draft."
     )
     return InspectionResult(triage_result, route, plan, reply)

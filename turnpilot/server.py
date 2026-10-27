@@ -8,16 +8,16 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from twilio.request_validator import RequestValidator
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 
-from .agents import follow_up
+from .agents import bob_chat, follow_up
 from .config import Settings
 from .db import Store
 from .media import MAX_BYTES, download_image, save_image, validate_image
-from .workflow import inspect
+from .workflow import assess_photo, prepare_handoff
 
 
 log = logging.getLogger(__name__)
@@ -55,15 +55,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 r"^\s*(?:please\s+)?(?:cancel(?:\s+(?:it|this|my|the)\s*(?:draft|request|case)?)?|never\s?mind|i\s+want\s+to\s+cancel(?:\s+this)?)\s*[.!]?\s*$",
                 body, re.I,
             ))
-            if cancel_request and not media_url:
+            if cancel_request and not media_url and not uploaded_image:
                 if prior:
                     case_id = prior["id"]
                     store.attach(message_id, case_id)
                     store.cancel_case(case_id)
                     store.action(case_id, message_id, "bob", "cancelled_draft", {"case_id": case_id})
-                    reply = "I'm Bob. I've cancelled this draft case. No vendor had been contacted or booked, and no payment was made. Send me a new photo or description whenever you need help."
+                    reply = "Done — I closed that demo request. Nothing was booked. Need anything else?"
                 else:
-                    reply = "I'm Bob. There isn't an active draft case to cancel. Send me a photo or description whenever you need help."
+                    reply = "There's no open request to cancel. Send me a photo whenever you need help."
                 send(sender, case_id, reply)
                 return reply
             new_issue = bool(re.search(r"\b(new issue|another issue|separate issue)\b", body, re.I))
@@ -75,9 +75,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 image = download_image(settings, media_url, media_mime, message_id)
             else:
                 image = None
+            if image and prior and prior["plan_json"] != "{}" and not re.search(r"\b(update|same issue|more photos?|additional photo)\b", body, re.I):
+                new_issue = True
+            if not image and prior and store.pending_handoff(prior["id"]):
+                affirmative = bool(re.match(r"^\s*(?:yes|yeah|yep|sure|ok(?:ay)?|please do|go ahead|do it)(?:\s+(?:please|go ahead|do it))?\s*[.!]?\s*$", body, re.I))
+                decline = bool(re.match(r"^\s*(?:no|no thanks|not yet|maybe later)\s*[.!]?\s*$", body, re.I))
+                if affirmative:
+                    case_id = prior["id"]
+                    store.attach(message_id, case_id)
+                    triage_result = store.last_triage(case_id)
+                    if not triage_result:
+                        raise ValueError("No saved inspection for pending handoff")
+                    trade = triage_result["trade"].title()
+                    store.action(case_id, message_id, "bob", "handoff_approved", {"trade": trade, "simulated": True})
+                    helper = "cleaner" if triage_result["trade"] == "cleaner" else ("plumber" if triage_result["trade"] == "plumber" else trade.lower())
+                    send(sender, case_id, f"One sec — I'm talking to our demo {helper} now.")
+                    route, plan = prepare_handoff(
+                        settings, triage_result, prior["property_context"],
+                        on_action=lambda agent, action, detail: store.action(case_id, message_id, agent, action, detail),
+                    )
+                    store.update_case(case_id, triage_result, plan)
+                    slot = plan["slot"].split(" (", 1)[0].lower()
+                    duration = plan.get("duration", "about 2 hours").split(" (", 1)[0].lower()
+                    if triage_result["trade"] == "cleaner":
+                        send(sender, case_id, f"Just heard back from her. {slot.capitalize()} could work, and it'd take {duration} at $100/hour.")
+                    elif triage_result["trade"] == "plumber":
+                        send(sender, case_id, f"Just heard back from him. {slot.capitalize()} could work, and the repair should take {duration}.")
+                    else:
+                        send(sender, case_id, f"Just heard back. {slot.capitalize()} could work, and the job may take {duration}.")
+                    if triage_result["trade"] == "cleaner":
+                        reply = "Would 10:00 work for you?"
+                    elif triage_result["trade"] == "plumber":
+                        reply = f"For normal wear and tear, the owner would cover this repair. Rough demo cost: {plan['estimate'][:45]}. Would 17:00 work?"
+                    else:
+                        reply = f"Rough demo cost: {plan['estimate'][:45]}. Would that time work?"
+                    send(sender, case_id, reply)
+                    return reply
+                if decline:
+                    case_id = prior["id"]
+                    store.attach(message_id, case_id)
+                    reply = "No problem. Just say yes if you'd like me to check later."
+                    send(sender, case_id, reply)
+                    return reply
+            if not image and prior and re.search(r"\b(house is a mess|place is a mess|needs cleaning|dirty|another issue|new issue)\b", body, re.I):
+                new_issue = True
             if not image and prior and not new_issue:
                 case_id = prior["id"]
                 store.attach(message_id, case_id)
+                last_outbound = store.last_outbound(case_id)
+                if re.match(r"^\s*(?:yes|yeah|yep|sure|ok(?:ay)?|that works|sounds good)\s*[.!]?\s*$", body, re.I) and last_outbound and re.search(r"\bwork(?: for you)?\?", last_outbound, re.I):
+                    name = "Michel" if sender.startswith("browser:") and settings.mode == "demo" else ""
+                    closing = f"Of course, {name}—need anything else?" if name else "Of course—need anything else?"
+                    reply = f"Got it, I've saved that as the demo time. {closing}"
+                    store.action(case_id, message_id, "bob", "demo_time_acknowledged", {"simulated": True})
+                    send(sender, case_id, reply)
+                    return reply
                 if property_context:
                     store.set_property_context(case_id, property_context)
                     prior["property_context"] = property_context
@@ -85,10 +137,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 reply = follow_up(settings, body, prior, store.history(case_id))
                 send(sender, case_id, reply)
                 return reply
-            if not image and not re.search(r"sink|pipe|leak|water|drain|plumb|electric|outlet|wire|spark|clean|stain|mold|trash", body, re.I):
-                reply = "Hi, I'm Bob. What happened, and where in the property? A clear photo helps me choose the right specialist. You can add 'Property: Unit 2' for context."
+            if not image:
+                store.action(None, message_id, "bob", "general_chat", {"message": body[:300]})
+                reply = bob_chat(settings, body, [] if new_issue else store.sender_history(sender))
                 send(sender, None, reply)
                 return reply
+            earlier_messages = [] if new_issue else [
+                item["body"] for item in store.sender_history(sender)
+                if item["direction"] == "in" and item["id"] != message_id and item["body"]
+            ]
+            if not property_context:
+                for earlier in reversed(earlier_messages):
+                    earlier_property = re.search(r"(?:property|unit|address):\s*([^\n]{3,120})", earlier, re.I)
+                    if earlier_property:
+                        property_context = earlier_property.group(1).strip()
+                        break
             case_id = prior["id"] if prior and image and not new_issue else store.create_case(sender, property_context)
             store.attach(message_id, case_id)
             if prior and case_id == prior["id"] and property_context:
@@ -96,14 +159,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if image:
                 store.photo(message_id, str(image[0]), image[1], media_url or "browser-upload")
             prior_context = dict(prior) if prior and case_id == prior["id"] else None
-            result = inspect(
-                settings, body, image, prior_context,
-                property_context or (prior or {}).get("property_context", ""),
+            triage_result = assess_photo(
+                settings, body + ("\nEarlier messages: " + " | ".join(earlier_messages[-3:]) if earlier_messages else ""), image, prior_context,
                 on_action=lambda agent, action, detail: store.action(case_id, message_id, agent, action, detail),
             )
-            store.update_case(case_id, result.triage, result.specialist)
-            send(sender, case_id, result.reply)
-            return result.reply
+            store.update_triage(case_id, triage_result)
+            intro = "[MOCK MODE] " if settings.mode == "mock" else ""
+            trade = triage_result["trade"]
+            issue = triage_result["issue"].lower()
+            if trade == "cleaner":
+                observation = "That looks like a cleaning job. I can see why you'd want help with it."
+            elif trade == "plumber" and "sink" in issue:
+                observation = "That looks like a leak under the sink."
+            elif trade == "plumber":
+                observation = "That looks like a plumbing issue."
+            elif trade == "electrician":
+                observation = "That looks like an electrical issue."
+            else:
+                observation = "I can see why that needs attention."
+            first = f"{intro}{observation}"
+            if triage_result["severity"] == "high" and triage_result["trade"] == "plumber":
+                first += " If water is running, shut it off if you can do that safely."
+            elif triage_result["severity"] == "high" and triage_result["trade"] == "electrician":
+                first += " Please keep clear of the wiring and seek urgent qualified help."
+            send(sender, case_id, first)
+            helper = "cleaner" if trade == "cleaner" else ("plumber" if trade == "plumber" else trade)
+            reply = f"Want me to ask our demo {helper} if they can come by?"
+            send(sender, case_id, reply)
+            return reply
         except Exception as exc:
             log.exception("Message processing failed")
             store.action(case_id, message_id, "system", "error", {"error": str(exc)[:300]})
@@ -217,6 +300,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             response.set_cookie("turnpilot_chat", secrets.token_hex(24), httponly=True, samesite="strict", secure=request.url.scheme == "https")
         return response
 
+    @app.post("/chat/new")
+    def chat_new(request: Request):
+        check_observer(request)
+        response = JSONResponse({"ok": True})
+        response.set_cookie("turnpilot_chat", secrets.token_hex(24), httponly=True,
+                            samesite="strict", secure=request.url.scheme == "https")
+        return response
+
     @app.get("/chat/bob.png")
     def chat_bob(request: Request):
         browser_sender(request)
@@ -229,7 +320,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for message in messages:
             if message["photo_id"]:
                 message["photo_url"] = f"/chat/photo/{message['photo_id']}"
-        return {"mode": settings.mode, "provider": settings.provider, "messages": messages}
+        active = store.active_case(sender)
+        return {"mode": settings.mode, "provider": settings.provider, "active_case": active["id"] if active else None, "messages": messages}
 
     @app.get("/chat/photo/{photo_id}")
     def chat_photo(photo_id: int, request: Request):
