@@ -11,6 +11,7 @@ A WhatsApp-only homeowner chat with a small internal observer page for the found
 - Both modes run separate triage, dispatcher, and specialist steps, recorded in `agent_actions`.
 - `turnpilot/workflow.py` is the transport-independent Founder 2 entry point. Its `inspect(...)` function returns the three decisions and a reply; the optional `on_action` callback records each completed step. Gabi's WhatsApp adapter can call this without importing Twilio code.
 - `turnpilot/static/bob.png` is Bob's cartoon avatar on the internal observer page. `assets/bob-whatsapp-profile.png` is a square, opaque portrait prepared for a future registered WhatsApp sender. Twilio's shared Sandbox number keeps the Twilio logo; its face cannot be replaced for the test. After your own sender is approved, Twilio allows a profile photo through **Messaging → Senders → WhatsApp senders**. See [Twilio's profile instructions](https://www.twilio.com/docs/whatsapp/editing-your-whatsapp-business-profile). The 2-minute screen-share script is in [docs/TWO_MINUTE_PITCH.md](docs/TWO_MINUTE_PITCH.md).
+- `demo/scenarios/` contains four AI-generated inspection photos for plumber, electrician, general maintenance, and cleaner routing. Bob's live Gemini triage was checked with each photo; see the scenario README for expected results and safety notes.
 
 ## Run locally and test without credentials
 
