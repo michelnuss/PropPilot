@@ -1,4 +1,5 @@
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,48 @@ def test_duplicate_sid_and_new_photo_updates_case(tmp_path):
     assert len(rows(settings.database_path, "cases")) == 1
     assert len(rows(settings.database_path, "photos")) == 2
     assert len(rows(settings.database_path, "tasks")) == 2
+
+
+def test_bob_cancels_only_the_draft_and_can_open_new_case(tmp_path):
+    client, settings = setup(tmp_path)
+    post(client, "SM1", image=True)
+    post(client, "SM2", "cancel the request")
+    case = rows(settings.database_path, "cases")[0]
+    assert case["status"] == "cancelled"
+    assert rows(settings.database_path, "tasks")[0]["status"] == "cancelled"
+    assert rows(settings.database_path, "agent_actions")[-1]["agent"] == "bob"
+    assert "No vendor had been contacted or booked" in rows(settings.database_path, "messages")[-1]["body"]
+    post(client, "SM3", "The kitchen sink is leaking")
+    assert len(rows(settings.database_path, "cases")) == 2
+
+
+def test_bob_asks_for_details_and_does_not_assign_renter_liability(tmp_path):
+    client, settings = setup(tmp_path)
+    post(client, "SM1", "Something is broken")
+    assert "What happened, and where" in rows(settings.database_path, "messages")[-1]["body"]
+    assert not rows(settings.database_path, "cases")
+    post(client, "SM2", image=True)
+    post(client, "SM3", "How much will the renter pay for this?")
+    answer = rows(settings.database_path, "messages")[-1]["body"]
+    assert "No payment is requested" in answer
+    assert "depends on the lease" in answer
+
+
+def test_observer_shows_saved_handoffs_and_requires_password_in_live_mode(tmp_path):
+    client, settings = setup(tmp_path)
+    post(client, "SM1", image=True)
+    page = client.get("/observer")
+    assert page.status_code == 200 and "Meet the crew" in page.text
+    assert client.get("/observer/bob.png").status_code == 200
+    state = client.get("/observer/state").json()
+    assert [a["agent"] for a in state["actions"]][::-1] == ["inspection_triage", "dispatcher", "plumber_agent"]
+    _, live_settings = setup(tmp_path, "live")
+    live = replace(live_settings, observer_password="demo-secret")
+    live_client = TestClient(create_app(live))
+    assert live_client.get("/observer").status_code == 401
+    assert live_client.get("/observer/state", auth=("demo", "wrong")).status_code == 401
+    assert live_client.get("/observer/state", auth=("demo", "demo-secret")).status_code == 200
+    assert TestClient(create_app(replace(live, observer_password=""))).get("/observer").status_code == 404
 
 
 def test_bad_media_is_logged_and_reported(tmp_path):
@@ -181,8 +224,43 @@ def test_gemini_vision_request_uses_inline_photo_and_json_schema(monkeypatch, tm
     assert result == {"ok": True}
     assert captured["url"].endswith("/gemini-3.8-flash:generateContent")
     assert captured["json"]["generationConfig"]["responseFormat"]["text"]["schema"] == schema
+    assert captured["json"]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
     assert len(captured["json"]["contents"][0]["parts"][1]["inline_data"]["data"]) > 1000
     assert captured["headers"]["x-goog-api-key"] == "test"
+
+
+def test_gemini_retries_when_thinking_uses_output_limit(monkeypatch, tmp_path):
+    limits = []
+
+    class FakeResponse:
+        def __init__(self, reason):
+            self.reason = reason
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"candidates": [{"finishReason": self.reason, "content": {"parts": [{"text": '{"ok":true}'}]}}]}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, url, **kwargs):
+            limits.append(kwargs["json"]["generationConfig"]["maxOutputTokens"])
+            return FakeResponse("MAX_TOKENS" if len(limits) == 1 else "STOP")
+
+    monkeypatch.setattr("turnpilot.agents.httpx.Client", FakeClient)
+    _, settings = setup(tmp_path, "live", "gemini")
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+    assert _model_json(settings, "Inspect", "Question", schema=schema, name="check") == {"ok": True}
+    assert limits == [4096, 8192]
 
 
 def test_mock_sparking_outlet_is_urgent(tmp_path):
@@ -215,6 +293,23 @@ def test_workflow_has_no_whatsapp_or_database_dependency(tmp_path):
     assert result.specialist["simulated"] is True
     assert actions == [("inspection_triage", "classified"), ("dispatcher", "routed"), ("plumber_agent", "draft_plan")]
     assert "No vendor has been contacted" in result.reply
+
+
+def test_long_model_draft_keeps_simulation_disclosure(monkeypatch, tmp_path):
+    _, settings = setup(tmp_path)
+    monkeypatch.setattr("turnpilot.workflow.triage", lambda *args: {
+        "trade": "plumber", "issue": "Leak " * 100, "uncertainty": "Unknown " * 100, "severity": "high"
+    })
+    monkeypatch.setattr("turnpilot.workflow.specialist", lambda *args: {
+        "diagnosis": "Possible pipe damage " * 100,
+        "repair_plan": "Inspect and replace fitting " * 100,
+        "estimate": "$150–$350 " * 100,
+        "slot": "Tomorrow morning " * 100,
+    })
+    reply = inspect(settings, "sink leak", None).reply
+    assert len(reply) <= 1550
+    assert "Connected to simulated Plumber Agent" in reply
+    assert "No vendor has been contacted or booked" in reply
 
 
 def test_workflow_preserves_completed_steps_on_specialist_failure(monkeypatch, tmp_path):

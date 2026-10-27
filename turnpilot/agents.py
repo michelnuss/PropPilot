@@ -58,29 +58,34 @@ def _model_json(
             path, mime = image
             data = base64.b64encode(path.read_bytes()).decode("ascii")
             parts.append({"inline_data": {"mime_type": mime, "data": data}})
+        thinking = {"thinkingConfig": {"thinkingLevel": "low"}} if settings.gemini_model.startswith(("gemini-3", "gemini-4")) else {}
         with httpx.Client(timeout=35) as client:
-            response = client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent",
-                headers={"x-goog-api-key": settings.gemini_key},
-                json={
-                    "systemInstruction": {"parts": [{"text": instructions}]},
-                    "contents": [{"role": "user", "parts": parts}],
-                    "generationConfig": {
-                        "responseFormat": {"text": {"mimeType": "APPLICATION_JSON", "schema": schema}},
-                        "maxOutputTokens": 600,
+            for output_limit in (4096, 8192):
+                response = client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent",
+                    headers={"x-goog-api-key": settings.gemini_key},
+                    json={
+                        "systemInstruction": {"parts": [{"text": instructions}]},
+                        "contents": [{"role": "user", "parts": parts}],
+                        "generationConfig": {
+                            "responseFormat": {"text": {"mimeType": "APPLICATION_JSON", "schema": schema}},
+                            "maxOutputTokens": output_limit,
+                            **thinking,
+                        },
                     },
-                },
-            )
-            response.raise_for_status()
-        result = response.json()
-        candidates = result.get("candidates", [])
-        if not candidates:
-            raise ValueError("Gemini returned no candidate")
-        candidate = candidates[0]
-        if candidate.get("finishReason") not in (None, "STOP"):
-            raise ValueError(f"Gemini finish reason: {candidate['finishReason']}")
-        output = "".join(part.get("text", "") for part in candidate.get("content", {}).get("parts", []))
-        return _parse_object(output)
+                )
+                response.raise_for_status()
+                candidates = response.json().get("candidates", [])
+                if not candidates:
+                    raise ValueError("Gemini returned no candidate")
+                candidate = candidates[0]
+                if candidate.get("finishReason") == "MAX_TOKENS":
+                    continue
+                if candidate.get("finishReason") not in (None, "STOP"):
+                    raise ValueError(f"Gemini finish reason: {candidate['finishReason']}")
+                output = "".join(part.get("text", "") for part in candidate.get("content", {}).get("parts", []))
+                return _parse_object(output)
+        raise ValueError("Gemini exceeded its output limit before completing the response")
     if settings.provider != "openai":
         raise ValueError("Unsupported AI provider")
     content = [{"type": "input_text", "text": text}]
@@ -188,16 +193,20 @@ def follow_up(settings: Settings, question: str, case: dict, history: list[dict]
                 "general maintenance": "Avoid unsafe areas and seek qualified help for immediate hazards.",
             }[case["trade"]]
             answer = f"Current triage is {case['severity']} urgency. {advice}"
+        elif re.search(r"who pays|tenant pay|renter pay|owner pay|landlord pay|responsib|charge", lower):
+            answer = "No payment is requested. The owner usually coordinates property repairs, but any renter responsibility depends on the lease, the cause, and local rules. I cannot determine that from a photo."
         elif re.search(r"cost|price|estimate|much", lower):
             answer = f"The rough demo-only estimate is {plan.get('estimate', 'unavailable')}. A real specialist would need to inspect it."
         elif re.search(r"next|status|book|when|slot", lower):
             answer = f"The draft repair request is prepared for a simulated {case['trade'].title()} Agent. Simulated slot: {plan.get('slot', 'not set')}. No vendor was contacted or booked."
+        elif re.search(r"cancel", lower):
+            answer = "You can cancel this draft by replying 'cancel'. No vendor has been contacted or booked."
         else:
-            answer = f"For the {case['issue']}, the simulated {case['trade'].title()} Agent suggests: {plan.get('repair_plan', 'an on-site inspection')}. What would you like to know?"
+            answer = f"I'm Bob. For the {case['issue']}, my simulated {case['trade'].title()} Agent suggests: {plan.get('repair_plan', 'an on-site inspection')}. What would you like to know?"
         return f"[MOCK MODE] {answer}"
     result = _model_json(
         settings,
-        "You answer a property issue follow-up in WhatsApp. Use the stored case and recent conversation. Keep it under 120 words. Be clear about uncertainty. All vendors, estimates, and slots are simulated; no outreach or booking happened. For electrical hazards, fire, or severe flooding, advise staying clear and seeking urgent qualified help. Output one key: answer.",
+        "You are Bob, a friendly home-care coordinator answering a property issue follow-up in WhatsApp. Use the stored case and recent conversation. Keep it under 120 words. Ask one useful follow-up question when a material detail is missing. Be clear about uncertainty. All vendors, estimates, and slots are simulated; no outreach, booking, or payment happened. If asked who pays, say the owner usually coordinates property maintenance, but any renter responsibility depends on the lease, cause, and local rules; never assign liability from a photo. If asked about cancellation, explain that replying 'cancel' closes only the draft case. For electrical hazards, fire, or severe flooding, advise staying clear and seeking urgent qualified help. Output one key: answer.",
         f"Question: {question}\nCase: {json.dumps(case)}\nRecent messages: {json.dumps(history)}",
         schema=FOLLOWUP_SCHEMA,
         name="case_followup",

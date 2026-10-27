@@ -36,15 +36,15 @@ def inspect(
         on_action(route["route"], "draft_plan", plan)
     intro = "[MOCK MODE] " if settings.mode == "mock" else ""
     caution = (
-        " If there is exposed wiring, fire risk, or water near electricity, keep clear and seek urgent qualified help."
+        " This could be a bigger problem. If there is exposed wiring, fire risk, or water near electricity, keep clear and seek urgent qualified help."
         if triage_result["severity"] == "high"
         else ""
     )
     reply = (
-        f"{intro}I can see/report: {triage_result['issue']}. {triage_result['uncertainty']}\n"
-        f"Connected to simulated {triage_result['trade'].title()} Agent. Draft repair request prepared.\n"
-        f"Possible diagnosis: {plan['diagnosis']}\nPlan: {plan['repair_plan']}\n"
-        f"Rough demo-only estimate: {plan['estimate']}. Simulated slot: {plan['slot']}.\n"
-        f"No vendor has been contacted or booked.{caution} Ask me a follow-up question."
+        f"{intro}Hi, I'm Bob. From your report: {triage_result['issue'][:180]}. {triage_result['uncertainty'][:140]}\n"
+        f"Connected to simulated {triage_result['trade'].title()} Agent. Draft repair request prepared. I'll keep track of it here.\n"
+        f"Possible diagnosis: {plan['diagnosis'][:180]}\nPlan: {plan['repair_plan'][:240]}\n"
+        f"Rough demo-only estimate: {plan['estimate'][:120]}. Simulated slot: {plan['slot'][:80]}.\n"
+        f"No vendor has been contacted or booked, and no payment is requested.{caution} Ask me a question or reply 'cancel' to close this draft."
     )
-    return InspectionResult(triage_result, route, plan, reply[:1550])
+    return InspectionResult(triage_result, route, plan, reply)

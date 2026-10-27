@@ -1,8 +1,12 @@
 import logging
 import re
+import base64
+import binascii
+import secrets
+from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from twilio.request_validator import RequestValidator
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
@@ -15,6 +19,7 @@ from .workflow import inspect
 
 
 log = logging.getLogger(__name__)
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -41,6 +46,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         case_id = None
         try:
             prior = store.active_case(sender)
+            cancel_request = bool(re.search(
+                r"^\s*(?:please\s+)?(?:cancel(?:\s+(?:it|this|my|the)\s*(?:draft|request|case)?)?|never\s?mind|i\s+want\s+to\s+cancel(?:\s+this)?)\s*[.!]?\s*$",
+                body, re.I,
+            ))
+            if cancel_request and not media_url:
+                if prior:
+                    case_id = prior["id"]
+                    store.attach(message_id, case_id)
+                    store.cancel_case(case_id)
+                    store.action(case_id, message_id, "bob", "cancelled_draft", {"case_id": case_id})
+                    send(sender, case_id, "I'm Bob. I've cancelled this draft case. No vendor had been contacted or booked, and no payment was made. Send me a new photo or description whenever you need help.")
+                else:
+                    send(sender, None, "I'm Bob. There isn't an active draft case to cancel. Send me a photo or description whenever you need help.")
+                return
             new_issue = bool(re.search(r"\b(new issue|another issue|separate issue)\b", body, re.I))
             property_match = re.search(r"(?:property|unit|address):\s*([^\n]{3,120})", body, re.I)
             property_context = property_match.group(1).strip() if property_match else ""
@@ -58,8 +77,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 reply = follow_up(settings, body, prior, store.history(case_id))
                 send(sender, case_id, reply)
                 return
-            if not image and not re.search(r"sink|pipe|leak|water|drain|plumb|electric|outlet|wire|spark|clean|stain|mold|trash|broken|damage|repair", body, re.I):
-                send(sender, None, "Hi! Send a photo of the property issue, or describe what needs attention. You can add 'Property: Unit 2' for context.")
+            if not image and not re.search(r"sink|pipe|leak|water|drain|plumb|electric|outlet|wire|spark|clean|stain|mold|trash", body, re.I):
+                send(sender, None, "Hi, I'm Bob. What happened, and where in the property? A clear photo helps me choose the right specialist. You can add 'Property: Unit 2' for context.")
                 return
             case_id = prior["id"] if prior and image and not new_issue else store.create_case(sender, property_context)
             store.attach(message_id, case_id)
@@ -122,6 +141,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.mode != "mock":
             raise HTTPException(status_code=404)
         return store.actions()
+
+    def check_observer(request: Request):
+        if settings.mode == "mock":
+            return
+        if not settings.observer_password:
+            raise HTTPException(status_code=404)
+        auth = request.headers.get("Authorization", "")
+        try:
+            scheme, encoded = auth.split(" ", 1)
+            credentials = base64.b64decode(encoded, validate=True).decode("utf-8")
+            username, password = credentials.split(":", 1)
+        except (ValueError, UnicodeDecodeError, binascii.Error):
+            scheme, username, password = "", "", ""
+        if not (scheme.lower() == "basic" and secrets.compare_digest(username, "demo")
+                and secrets.compare_digest(password, settings.observer_password)):
+            raise HTTPException(status_code=401, headers={"WWW-Authenticate": 'Basic realm="TurnPilot observer"'})
+
+    @app.get("/observer")
+    def observer(request: Request):
+        check_observer(request)
+        return FileResponse(STATIC_DIR / "observer.html", media_type="text/html")
+
+    @app.get("/observer/state")
+    def observer_state(request: Request):
+        check_observer(request)
+        return store.observer_state()
+
+    @app.get("/observer/bob.png")
+    def observer_bob(request: Request):
+        check_observer(request)
+        return FileResponse(STATIC_DIR / "bob.png", media_type="image/png")
 
     return app
 

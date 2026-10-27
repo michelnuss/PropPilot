@@ -85,6 +85,14 @@ class Store:
                 (context, case_id),
             )
 
+    def cancel_case(self, case_id: int):
+        with self.connect() as db:
+            db.execute(
+                "UPDATE cases SET status='cancelled',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='open'",
+                (case_id,),
+            )
+            db.execute("UPDATE tasks SET status='cancelled' WHERE case_id=? AND status='draft_simulated'", (case_id,))
+
     def photo(self, message_id: int, path: str, mime: str, url: str):
         with self.connect() as db:
             db.execute(
@@ -128,3 +136,17 @@ class Store:
             return [dict(row) for row in db.execute(
                 "SELECT * FROM agent_actions ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()]
+
+    def observer_state(self):
+        with self.connect() as db:
+            cases = [dict(row) for row in db.execute(
+                "SELECT id,property_context,issue,trade,severity,status,created_at,updated_at "
+                "FROM cases ORDER BY id DESC LIMIT 12"
+            )]
+            actions = [dict(row) for row in db.execute(
+                "SELECT id,case_id,agent,action,detail_json,created_at "
+                "FROM agent_actions ORDER BY id DESC LIMIT 50"
+            )]
+        for action in actions:
+            action["detail"] = json.loads(action.pop("detail_json"))
+        return {"cases": cases, "actions": actions}

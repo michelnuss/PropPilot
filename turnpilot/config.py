@@ -17,6 +17,7 @@ class Settings:
     twilio_token: str = os.getenv("TWILIO_AUTH_TOKEN", "")
     twilio_from: str = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
     webhook_url: str = os.getenv("TWILIO_WEBHOOK_URL", "")
+    observer_password: str = os.getenv("OBSERVER_PASSWORD", "")
     openai_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     gemini_key: str = os.getenv("GEMINI_API_KEY", "")
