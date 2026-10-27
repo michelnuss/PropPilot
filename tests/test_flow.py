@@ -1,8 +1,10 @@
+import asyncio
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 from twilio.request_validator import RequestValidator
 
@@ -187,6 +189,19 @@ def test_live_browser_preview_never_sends_twilio(tmp_path, monkeypatch):
     response = client.post("/chat/message", auth=("demo", "demo-password"), data={"body": "Hello"})
     assert response.status_code == 200
     assert rows(settings.database_path, "messages")[-1]["status"] == "browser_demo"
+
+
+def test_local_demo_opens_without_basic_but_forwarded_request_needs_it(tmp_path):
+    _, settings = setup(tmp_path, "demo", "gemini")
+    app = create_app(settings)
+    async def check():
+        transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 45500))
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:8766") as client:
+            assert (await client.get("/chat")).status_code == 200
+            assert (await client.get("/chat/state")).status_code == 200
+            assert (await client.get("/observer")).status_code == 200
+            assert (await client.get("/chat", headers={"X-Forwarded-For": "203.0.113.5"})).status_code == 401
+    asyncio.run(check())
 
 
 def test_bad_media_is_logged_and_reported(tmp_path):

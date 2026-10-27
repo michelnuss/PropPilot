@@ -59,11 +59,11 @@ Open `http://127.0.0.1:8000/observer` to watch Bob, the dispatcher, and speciali
 ## Browser chat for the pitch
 
 1. In your private `.env`, set `APP_MODE=demo`, `AI_PROVIDER=gemini`, a valid `GEMINI_API_KEY`, and `OBSERVER_PASSWORD` to a password you choose. Twilio credentials are not needed for this mode.
-2. Run `uvicorn turnpilot.server:app --host 127.0.0.1 --port 8000` and open `http://127.0.0.1:8000/chat`. The browser asks for username `demo` and your `OBSERVER_PASSWORD`.
+2. Run `uvicorn turnpilot.server:app --host 127.0.0.1 --port 8000` and open `http://127.0.0.1:8000/chat`. Local loopback access opens without a sign-in prompt. Keep `OBSERVER_PASSWORD` set for any access through a public tunnel, which uses username `demo`.
 3. Click **Leaking sink** to attach the staged photo, then press send. Bob's response comes from the live Gemini agent workflow and is saved to SQLite. Ask “How urgent is it?” in the same chat. Open `/observer` in another tab to show the triage → dispatcher → plumber handoffs.
 4. Use the other sample buttons to attach outlet, window, or cleaning photos. Add `new issue` to the caption when you want a separate case. The uploaded photo remains visible after a reload in the same browser session.
 
-The preview borrows WhatsApp's familiar chat layout and colors but is labeled **Browser demo**. It does not send a WhatsApp message. `APP_MODE=mock` can also open `/chat`, but mock answers do not inspect image pixels. In `APP_MODE=live`, the browser preview remains available with the same password, alongside the Twilio webhook. Keep `/chat` and `/observer` password-protected when using a public tunnel. Do not put API keys in browser code or commit `.env`.
+The preview borrows WhatsApp's familiar chat layout and colors but is labeled **Browser demo**. It does not send a WhatsApp message. `APP_MODE=mock` can also open `/chat`, but mock answers do not inspect image pixels. In `APP_MODE=live`, the browser preview remains available with the same password, alongside the Twilio webhook. Local password-free demo access requires a loopback URL and direct loopback connection; forwarded/tunnel requests require `OBSERVER_PASSWORD`. Do not put API keys in browser code or commit `.env`.
 
 ## Connect a real WhatsApp chat
 

@@ -159,6 +159,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def check_observer(request: Request):
         if settings.mode == "mock":
             return
+        # The pitch preview is bound to loopback. In demo mode, let a local
+        # browser open it without HTTP Basic, which some embedded browsers
+        # cannot negotiate. Forwarded/tunnel requests still need a password.
+        local_demo = (
+            settings.mode == "demo"
+            and request.client is not None
+            and request.client.host in {"127.0.0.1", "::1"}
+            and request.url.hostname in {"127.0.0.1", "localhost"}
+            and not any(request.headers.get(name) for name in (
+                "forwarded", "x-forwarded-for", "x-forwarded-host", "x-original-host"
+            ))
+        )
+        if local_demo:
+            return
         if not settings.observer_password:
             raise HTTPException(status_code=404, detail="Set OBSERVER_PASSWORD to use founder pages in AI mode")
         auth = request.headers.get("Authorization", "")
